@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "docs",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": ["-m", "http.server", "8742", "--directory", "docs"],
+      "port": 8742
+    }
+  ]
+}

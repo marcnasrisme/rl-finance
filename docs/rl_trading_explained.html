@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>From REINFORCE to a GRPO Trading Agent — the full story</title>
+<style>
+  :root {
+    --bg: #0e1116; --panel: #161b24; --panel2: #1c2330;
+    --text: #d7dde8; --muted: #8b95a7; --accent: #5eb0ff;
+    --green: #4ade80; --red: #f87171; --gold: #fbbf24; --purple: #c084fc;
+    --border: #2a3446; --code-bg: #10151d;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 0 28px 120px; }
+  header.hero { padding: 72px 0 28px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+  h1 { font-size: 2.1rem; line-height: 1.2; margin: 0 0 12px; letter-spacing: -0.5px; }
+  h1 .thin { color: var(--muted); font-weight: 400; }
+  .subtitle { color: var(--muted); font-size: 1.05rem; max-width: 640px; }
+  h2 {
+    font-size: 1.55rem; margin: 72px 0 4px; letter-spacing: -0.3px;
+    padding-top: 18px; border-top: 1px solid var(--border);
+  }
+  h2 .num { color: var(--accent); font-variant-numeric: tabular-nums; margin-right: 10px; }
+  h3 { font-size: 1.12rem; margin: 34px 0 6px; color: #eef2f8; }
+  p { margin: 12px 0; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  strong { color: #fff; }
+  em { color: #e8edf5; }
+  code {
+    background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px;
+    padding: 1px 6px; font: 0.86em ui-monospace, "SF Mono", Menlo, monospace; color: #a5d6ff;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 18px; overflow-x: auto; font-size: 0.85rem; line-height: 1.55;
+  }
+  pre code { background: none; border: none; padding: 0; color: #c9d6e8; }
+  .eq {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 20px; margin: 16px 0; text-align: center; font-size: 1.08rem;
+    font-family: "STIX Two Math", "Cambria Math", Georgia, serif; overflow-x: auto;
+  }
+  .eq .label { display:block; font: 0.72rem -apple-system, sans-serif; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+  sub, sup { font-size: 0.72em; }
+  .callout {
+    border-left: 3px solid var(--accent); background: var(--panel);
+    border-radius: 0 10px 10px 0; padding: 12px 18px; margin: 18px 0;
+  }
+  .callout.warn { border-left-color: var(--gold); }
+  .callout.bad { border-left-color: var(--red); }
+  .callout.good { border-left-color: var(--green); }
+  .callout .tag { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1.2px;
+    color: var(--muted); display: block; margin-bottom: 4px; }
+  .fig { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px; margin: 22px 0; }
+  .fig .cap { color: var(--muted); font-size: 0.85rem; margin-top: 10px; line-height: 1.5; }
+  .fig svg { display: block; width: 100%; height: auto; }
+  table.data { width: 100%; border-collapse: collapse; font-size: 0.86rem; margin: 14px 0;
+    font-variant-numeric: tabular-nums; }
+  table.data th { text-align: right; color: var(--muted); font-weight: 600; padding: 7px 10px;
+    border-bottom: 1px solid var(--border); }
+  table.data td { text-align: right; padding: 6px 10px; border-bottom: 1px solid #1e2532; }
+  table.data th:first-child, table.data td:first-child { text-align: left; }
+  .pos { color: var(--green); } .neg { color: var(--red); }
+  .toc { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px 24px; margin: 28px 0; columns: 2; column-gap: 32px; font-size: 0.92rem; }
+  .toc a { display: block; padding: 3px 0; color: var(--text); break-inside: avoid; }
+  .toc a:hover { color: var(--accent); text-decoration: none; }
+  .toc .n { color: var(--accent); display: inline-block; width: 26px; font-variant-numeric: tabular-nums; }
+  .pill { display: inline-block; background: var(--panel2); border: 1px solid var(--border);
+    border-radius: 999px; padding: 2px 12px; font-size: 0.8rem; color: var(--muted); margin: 2px 4px 2px 0; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 0.8rem; color: var(--muted); margin-top: 8px; }
+  .legend span::before { content: "—"; font-weight: 900; margin-right: 5px; }
+  .controls { display: flex; align-items: center; gap: 14px; margin: 10px 0; font-size: 0.88rem; color: var(--muted); }
+  input[type="range"] { accent-color: var(--accent); }
+  .btn { background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 14px; font-size: 0.85rem; cursor: pointer; }
+  .btn.active { border-color: var(--accent); color: var(--accent); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } .toc { columns: 1; } }
+  .footnote { color: var(--muted); font-size: 0.85rem; }
+  #metricsTable { overflow-x: auto; }
+  #metricsTable table { min-width: 640px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>Post-training an LLM to trade<br><span class="thin">from REINFORCE to our GRPO agent, decision by decision</span></h1>
+  <p class="subtitle">Everything in this document that looks like data <em>is</em> data: every chart and table
+  is computed from the actual price history and backtests in the <code>RL Finance</code> repo, as of July&nbsp;1,&nbsp;2026.
+  We go bottom-up: what RL actually optimizes, why PPO exists, why DPO is the wrong tool here, why GRPO
+  is almost suspiciously well-suited to markets — and then every design choice in the codebase, including
+  one genuine reward-design bug that this document's own example exposed.</p>
+</header>
+
+<nav class="toc">
+  <a href="#s1"><span class="n">1</span> The big picture</a>
+  <a href="#s2"><span class="n">2</span> RL from first principles</a>
+  <a href="#s3"><span class="n">3</span> Policy gradients &amp; REINFORCE</a>
+  <a href="#s4"><span class="n">4</span> PPO: stability at a price</a>
+  <a href="#s5"><span class="n">5</span> The DPO detour</a>
+  <a href="#s6"><span class="n">6</span> GRPO: the baseline is the group</a>
+  <a href="#s7"><span class="n">7</span> RL on an actual LLM</a>
+  <a href="#s8"><span class="n">8</span> Our environment, line by line</a>
+  <a href="#s9"><span class="n">9</span> Design decisions &amp; failure modes</a>
+  <a href="#s10"><span class="n">10</span> Data, universe, and time splits</a>
+  <a href="#s11"><span class="n">11</span> The backtester &amp; the five baselines</a>
+  <a href="#s12"><span class="n">12</span> Metrics: what "good" means</a>
+  <a href="#s13"><span class="n">13</span> Statistical humility</a>
+  <a href="#s14"><span class="n">14</span> The Colab run: knobs &amp; dashboards</a>
+</nav>
+
+<!-- ================================================================ -->
+<h2 id="s1"><span class="num">1</span>The big picture</h2>
+
+<p>An LLM ships in three stages. <strong>Pretraining</strong> teaches it the distribution of human text
+(next-token prediction on trillions of tokens). <strong>Supervised fine-tuning</strong> teaches it to behave
+like an assistant (imitate curated demonstrations). <strong>Post-training with RL</strong> is different in kind:
+instead of imitating, the model <em>tries things</em>, gets a score, and shifts probability mass toward
+whatever scored well. Nobody shows it the right answer — because for our problem, nobody knows the right answer.</p>
+
+<p>Our loop, concretely:</p>
+
+<div class="fig">
+<svg viewBox="0 0 860 220" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#5eb0ff"/>
+    </marker>
+  </defs>
+  <g font-size="13" fill="#d7dde8">
+    <rect x="10" y="70" width="130" height="80" rx="10" fill="#1c2330" stroke="#2a3446"/>
+    <text x="75" y="102" text-anchor="middle" font-weight="600">Market history</text>
+    <text x="75" y="122" text-anchor="middle" fill="#8b95a7" font-size="11">12 ETFs, 2008–2019</text>
+
+    <rect x="190" y="70" width="130" height="80" rx="10" fill="#1c2330" stroke="#2a3446"/>
+    <text x="255" y="97" text-anchor="middle" font-weight="600">State s</text>
+    <text x="255" y="116" text-anchor="middle" fill="#8b95a7" font-size="11">one day's features</text>
+    <text x="255" y="132" text-anchor="middle" fill="#8b95a7" font-size="11">as a text prompt</text>
+
+    <rect x="370" y="55" width="150" height="110" rx="10" fill="#14263b" stroke="#5eb0ff"/>
+    <text x="445" y="90" text-anchor="middle" font-weight="600" fill="#5eb0ff">Policy π_θ</text>
+    <text x="445" y="110" text-anchor="middle" fill="#8b95a7" font-size="11">Qwen3-4B + LoRA</text>
+    <text x="445" y="128" text-anchor="middle" fill="#8b95a7" font-size="11">samples G = 8</text>
+    <text x="445" y="144" text-anchor="middle" fill="#8b95a7" font-size="11">allocations</text>
+
+    <rect x="570" y="70" width="130" height="80" rx="10" fill="#1c2330" stroke="#2a3446"/>
+    <text x="635" y="97" text-anchor="middle" font-weight="600">Action a</text>
+    <text x="635" y="116" text-anchor="middle" fill="#8b95a7" font-size="11">{"SPY":0.4, ...}</text>
+    <text x="635" y="132" text-anchor="middle" fill="#8b95a7" font-size="11">parsed weights</text>
+
+    <rect x="740" y="70" width="110" height="80" rx="10" fill="#1c2330" stroke="#2a3446"/>
+    <text x="795" y="97" text-anchor="middle" font-weight="600">Reward r</text>
+    <text x="795" y="116" text-anchor="middle" fill="#8b95a7" font-size="11">realized next</text>
+    <text x="795" y="132" text-anchor="middle" fill="#8b95a7" font-size="11">5-day return</text>
+
+    <line x1="140" y1="110" x2="186" y2="110" stroke="#5eb0ff" stroke-width="1.6" marker-end="url(#arr)"/>
+    <line x1="320" y1="110" x2="366" y2="110" stroke="#5eb0ff" stroke-width="1.6" marker-end="url(#arr)"/>
+    <line x1="520" y1="110" x2="566" y2="110" stroke="#5eb0ff" stroke-width="1.6" marker-end="url(#arr)"/>
+    <line x1="700" y1="110" x2="736" y2="110" stroke="#5eb0ff" stroke-width="1.6" marker-end="url(#arr)"/>
+    <path d="M 795 150 L 795 195 L 445 195 L 445 169" fill="none" stroke="#4ade80" stroke-width="1.6" marker-end="url(#arr)"/>
+    <text x="620" y="188" text-anchor="middle" fill="#4ade80" font-size="12">GRPO update: raise log-prob of above-average allocations</text>
+  </g>
+</svg>
+<div class="cap"><strong>Fig. 1 — The training loop.</strong> A historical market day becomes a prompt; the model
+samples 8 candidate portfolios for that same day; each is scored by what the market actually did over the following
+week; the gradient update pushes the model toward the allocations that did relatively better than their siblings.</div>
+</div>
+
+<p>Three properties of this setup drive everything downstream, so keep them in mind:</p>
+<p><span class="pill">1 — Verifiable reward</span> The score comes from arithmetic on historical prices, not from
+human opinion or another model. This is the "RLVR" regime (RL with verifiable rewards) — same family as training
+on math problems with checkable answers — and it's why we don't need a reward model or preference data.</p>
+<p><span class="pill">2 — One-step episodes</span> Our action doesn't change the market (we're not modeling
+impact). Each decision is a self-contained episode: state → action → reward, done. In RL vocabulary this is a
+<em>contextual bandit</em>, and it kills most of RL's hardest problems before they start — more in §2.</p>
+<p><span class="pill">3 — Brutal noise</span> The reward is a weekly market return: mean ≈ 0.2%, standard
+deviation ≈ 2.5% (real numbers, §13). The signal-to-noise ratio per decision is about 0.08. Nearly every design
+decision in this project is a defense against that fact.</p>
+
+<!-- ================================================================ -->
+<h2 id="s2"><span class="num">2</span>RL from first principles</h2>
+
+<h3>The formal object</h3>
+<p>RL problems are phrased as <strong>Markov Decision Processes</strong>: states <em>s</em>, actions <em>a</em>,
+a transition law P(s′|s,a), a reward function r(s,a), and a discount γ ∈ [0,1]. An agent follows a
+<strong>policy</strong> π<sub>θ</sub>(a|s) — a probability distribution over actions given the state, with
+parameters θ (for us: 4 billion transformer weights, of which we'll train a small LoRA slice). The objective is
+the expected return:</p>
+
+<div class="eq"><span class="label">The one and only objective</span>
+J(θ) = 𝔼<sub>trajectories ~ π<sub>θ</sub></sub> [ Σ<sub>t</sub> γ<sup>t</sup> r<sub>t</sub> ]
+</div>
+
+<p>Everything in RL — value functions, Bellman equations, Q-learning, actor-critic — is machinery for estimating
+or ascending this quantity. What makes it hard in general:</p>
+<p><strong>Credit assignment.</strong> When a chess game is lost, which of the 40 moves was the mistake?
+Rewards arrive late and must be attributed backward through time.<br>
+<strong>Non-differentiability.</strong> The environment is a black box. You cannot backprop through the market,
+a chess opponent, or a compiler. This is <em>the</em> reason RL exists as a separate field.<br>
+<strong>Exploration.</strong> You only observe rewards for actions you actually tried. A policy that never
+tries gold never learns gold was the right call in 2008.<br>
+<strong>Moving data distribution.</strong> Unlike supervised learning, the data you train on is generated by
+the thing you're training. Improve the policy and yesterday's experience becomes off-distribution.</p>
+
+<h3>Why our problem is the easy kind of RL (structurally)</h3>
+<p>Here's the load-bearing simplification. In our environment the action — a portfolio for the coming week —
+does not affect the next state. The market on 2010-04-15 doesn't care what our 4B model allocated on 2010-04-08.
+So the transition law degenerates, every episode has horizon 1, and γ is irrelevant. This is a
+<strong>contextual bandit</strong>: the "context" is the market state, the "arms" are portfolios, and the reward
+is next week's return.</p>
+
+<div class="callout good"><span class="tag">Consequence</span>
+No credit assignment across time, no value bootstrapping, no Bellman recursion, no γ tuning. The return
+<em>is</em> the reward. What remains from the full RL problem: non-differentiability (we still can't backprop
+through the market), exploration (we must sample diverse portfolios to learn), and noise (in spades). This is
+exactly the subset of problems that policy-gradient methods — and GRPO in particular — handle well.</div>
+
+<p>Why is this "RL" at all and not supervised learning? Because there is no label. Nobody tells the model the
+correct portfolio for 2010-04-08 — we couldn't even if we wanted to (§9 explains why the hindsight-optimal
+portfolio is a trap). The model only ever learns from <em>the scores of its own attempts</em>. That
+trial-and-score structure, plus the fact that the training data is generated by the current policy, is what
+makes it reinforcement learning.</p>
+
+<!-- ================================================================ -->
+<h2 id="s3"><span class="num">3</span>Policy gradients &amp; REINFORCE</h2>
+
+<p>We want to do gradient ascent on J(θ) = 𝔼<sub>a~π<sub>θ</sub>(·|s)</sub>[r(s,a)], but r comes from a
+black box. The trick that unlocks everything is one line of calculus — the <strong>log-derivative trick</strong>.
+Since ∇<sub>θ</sub>π = π·∇<sub>θ</sub>log π:</p>
+
+<div class="eq"><span class="label">REINFORCE (Williams, 1992)</span>
+∇<sub>θ</sub> J = ∇<sub>θ</sub> Σ<sub>a</sub> π<sub>θ</sub>(a|s)·r(s,a)
+= Σ<sub>a</sub> π<sub>θ</sub>(a|s)·∇<sub>θ</sub>log π<sub>θ</sub>(a|s)·r(s,a)
+= 𝔼<sub>a~π<sub>θ</sub></sub>[ r(s,a) · ∇<sub>θ</sub> log π<sub>θ</sub>(a|s) ]
+</div>
+
+<p>Read it right-to-left: <em>sample</em> an action from your own policy, compute the gradient that would make
+that action more likely, and scale it by the reward. No gradient of r required — the environment stays a black
+box, and the expectation can be estimated by plain Monte Carlo sampling. High reward ⇒ push probability toward
+that action; negative reward ⇒ push away. That's the entire conceptual core of policy-gradient RL, including
+everything OpenAI and DeepSeek do to LLMs.</p>
+
+<h3>The variance catastrophe, and baselines</h3>
+<p>REINFORCE is unbiased but has a famous flaw. Suppose on some market day <em>every</em> possible portfolio
+loses money (October 2008 — we'll see a real one in §6). Then every sampled action gets a negative reward, and
+the update pushes probability away from <em>all of them</em> — including the least-bad one, which is precisely
+the behavior we want to encourage. The gradient estimate isn't wrong on average, but any single batch mostly
+measures "did the market go up this week?" rather than "which allocation was smart?". That's variance, and with
+per-decision signal-to-noise of 0.08, raw REINFORCE would need astronomically many samples.</p>
+
+<p>The fix: subtracting any action-independent <strong>baseline</strong> b(s) leaves the expectation unchanged
+(𝔼[∇log π] = 0, same trick in reverse) but can slash the variance:</p>
+
+<div class="eq"><span class="label">Baseline / advantage form</span>
+∇<sub>θ</sub> J = 𝔼[ (r(s,a) − b(s)) · ∇<sub>θ</sub> log π<sub>θ</sub>(a|s) ],&nbsp;&nbsp;&nbsp;
+A(s,a) ≔ r(s,a) − b(s)
+</div>
+
+<p>A(s,a) is the <strong>advantage</strong>: how much better this action did <em>than expected in this state</em>.
+The ideal baseline is roughly "how does the average action do here?" — then on the 2008 day, the least-bad
+portfolio has a <em>positive</em> advantage even though its raw reward is negative, and the gradient points the
+right way. Hold this thought; GRPO is nothing more than a clever, learning-free way to get this baseline.</p>
+
+<div class="callout"><span class="tag">The whole plot, in one sentence</span>
+The entire PPO-vs-GRPO story is just: <em>where does b(s) come from?</em> PPO learns it with a second neural
+network (the critic). GRPO estimates it empirically by sampling a group of actions for the same state and using
+the group's mean. For LLMs — and especially for markets — the second answer turns out to be better and cheaper.</div>
+
+<!-- ================================================================ -->
+<h2 id="s4"><span class="num">4</span>PPO: stability at a price</h2>
+
+<p>Two more problems stand between REINFORCE-with-baseline and something that trains a big model reliably.</p>
+
+<p><strong>Problem 1 — sample reuse.</strong> Generating samples is expensive (for an LLM: a full autoregressive
+rollout per sample). But after one gradient step, your samples came from a slightly <em>different</em> policy, and
+reusing them naively biases the estimate. The fix is importance sampling: weight each sample by the probability
+ratio between the new and old policy,</p>
+
+<div class="eq">ρ(θ) = π<sub>θ</sub>(a|s) / π<sub>θ_old</sub>(a|s)</div>
+
+<p><strong>Problem 2 — destructive updates.</strong> Policy gradient updates can be violently self-reinforcing:
+one lucky sample gets a big reward, the policy lurches toward it, the next batch is sampled from the lurched
+policy, and the model collapses into a degenerate loop. (In LLM terms: it starts outputting the same token
+sequence forever.) You need something that caps how far a single batch can move the policy.</p>
+
+<p><strong>PPO</strong> (Proximal Policy Optimization, Schulman et al. 2017) solves both with one deliberately
+inelegant objective — take the <em>minimum</em> of the normal objective and a version where the ratio is clipped
+to [1−ε, 1+ε]:</p>
+
+<div class="eq"><span class="label">PPO clipped surrogate</span>
+L(θ) = 𝔼[ min( ρ(θ)·A ,&nbsp; clip(ρ(θ), 1−ε, 1+ε)·A ) ]
+</div>
+
+<p>Play with it — the interactive below draws the objective as a function of the ratio ρ, for a good action
+(A &gt; 0) and a bad one (A &lt; 0):</p>
+
+<div class="fig">
+  <div class="controls">
+    <label>clip ε = <strong id="epsVal">0.2</strong></label>
+    <input type="range" id="epsSlider" min="0.05" max="0.5" step="0.05" value="0.2">
+    <span style="margin-left:auto">dashed = unclipped ρ·A</span>
+  </div>
+  <div id="ppoClip"></div>
+  <div class="cap"><strong>Fig. 2 — What clipping actually does.</strong> For a positive-advantage action (green),
+  the objective flat-lines once ρ &gt; 1+ε: the model gets <em>zero gradient</em> for pushing an already-boosted
+  action further — enthusiasm is capped. For a negative-advantage action (red), it flat-lines below 1−ε: once an
+  action has been suppressed enough, stop. The <code>min()</code> makes the bound one-sided in exactly the
+  pessimistic direction. Slide ε to see the trust region widen and narrow.</div>
+</div>
+
+<h3>The critic, and what it costs</h3>
+<p>PPO gets its advantage A from a learned baseline: a <strong>critic network</strong> V<sub>φ</sub>(s) trained
+alongside the policy to predict expected return from each state (with GAE to blend multi-step estimates — in our
+one-step world it would reduce to A = r − V<sub>φ</sub>(s)). This works, but for LLMs it hurts three times:</p>
+<p><strong>Memory.</strong> The critic is typically a second full-size copy of the model, with its own optimizer
+states. On a 40 GB Colab A100, that's the difference between fits and doesn't.<br>
+<strong>Extra learning problem.</strong> The critic must be trained too. Early in training its predictions are
+garbage, so your advantages are garbage, and errors in V bias the policy gradient. You've traded variance for
+bias plus a second tuning problem.<br>
+<strong>Per-token awkwardness.</strong> For sequence-level rewards (ours arrives only after the final JSON
+token), a token-level value function is trying to predict a far-off scalar from every prefix — hard, and mostly
+wasted effort when the episode is one step anyway.</p>
+
+<p>PPO earned its place as the RLHF workhorse (InstructGPT, early ChatGPT), where the reward came from a learned
+human-preference model and the KL penalty to a reference policy kept text natural. But the critic tax is real,
+which sets up both of the next two sections.</p>
+
+<!-- ================================================================ -->
+<h2 id="s5"><span class="num">5</span>The DPO detour — and why it's the wrong tool here</h2>
+
+<p>You mentioned DPO, so let's place it precisely. <strong>DPO</strong> (Direct Preference Optimization, 2023)
+starts from the RLHF objective — maximize reward while staying KL-close to a reference policy — and observes
+that if your reward information comes as <em>pairwise human preferences</em> ("response y<sub>w</sub> beats
+y<sub>l</sub>"), the optimal policy has a closed form, and you can skip RL entirely. It collapses reward
+modeling + PPO into one supervised-looking loss:</p>
+
+<div class="eq"><span class="label">DPO loss (β controls KL tightness)</span>
+L = −log σ( β·[ log π<sub>θ</sub>(y<sub>w</sub>|x)/π<sub>ref</sub>(y<sub>w</sub>|x) −
+log π<sub>θ</sub>(y<sub>l</sub>|x)/π<sub>ref</sub>(y<sub>l</sub>|x) ] )
+</div>
+
+<p>Elegant, cheap, no sampling loop — and wrong for us, for three separable reasons:</p>
+<p><strong>1. Our rewards are scalars, not preferences.</strong> The market hands us numbers: +2.8% vs −18.9%.
+Converting to pairs ("risk-off beat all-SPY") throws away magnitude — a 20-point blowout and a 0.1% squeaker
+become the same training signal. We'd be lossy-compressing the one thing we have that's precise.<br>
+<strong>2. DPO is offline.</strong> It optimizes against a fixed dataset of comparisons. There's no exploration:
+the model never gets to try a weird barbell portfolio and discover it works. In a bandit problem, exploration is
+where all learning comes from.<br>
+<strong>3. The KL anchor is the point of DPO, not ours.</strong> DPO's β term exists to keep chat models
+human-sounding. Our constraint isn't "sound human," it's "make money" — we want the policy to drift as far from
+the base model's prior as the data justifies.</p>
+
+<div class="callout"><span class="tag">Taxonomy in one line</span>
+Human preference pairs, offline → <strong>DPO</strong>. Scalar rewards, need a learned baseline, memory to burn
+→ <strong>PPO</strong>. Scalar <em>verifiable</em> rewards, cheap sampling, memory-constrained →
+<strong>GRPO</strong>. We are squarely in case three.</div>
+<!-- ================================================================ -->
+<h2 id="s6"><span class="num">6</span>GRPO: the baseline is the group</h2>
+
+<p><strong>GRPO</strong> (Group Relative Policy Optimization, from DeepSeek's math-reasoning work and the method
+behind DeepSeek-R1) answers PPO's "where does the baseline come from?" with brute pragmatism: <em>sample G
+completions for the same prompt and let them baseline each other.</em></p>
+
+<div class="eq"><span class="label">GRPO advantage — no critic anywhere</span>
+For prompt s, sample a<sub>1</sub>…a<sub>G</sub> ~ π<sub>θ</sub>, get rewards r<sub>1</sub>…r<sub>G</sub>;&nbsp;&nbsp;
+A<sub>i</sub> = ( r<sub>i</sub> − mean(r<sub>1..G</sub>) ) / std(r<sub>1..G</sub>)
+</div>
+
+<p>Then plug A<sub>i</sub> into the same clipped-ratio objective as PPO (plus, in most implementations, a small
+KL penalty to the reference model — §7). The critic network, its 8 GB of weights, its optimizer states, and its
+entire secondary learning problem simply vanish. The cost: you must generate G completions per prompt instead
+of one, which is why GRPO belongs together with fast inference engines like vLLM.</p>
+
+<h3>Why this fits markets almost suspiciously well</h3>
+<p>For chat or math, group-mean baselining is a good variance trick. For trading it's something stronger.
+Recall the REINFORCE catastrophe: on a crash day every reward is negative and the raw gradient punishes
+everything. GRPO's group is <em>eight portfolios evaluated on the same market week</em> — so subtracting the
+group mean subtracts the market itself. What survives normalization is purely <em>cross-sectional</em>
+information: not "did the market rise?" but "which allocation was better, holding the week fixed?" The
+dominant noise source in finance — market direction — is cancelled by construction, at zero model cost.</p>
+
+<p>Here is a real group, computed from the repo's actual data. The prompt is the market state of
+<strong>Thursday, October 2, 2008</strong> — Lehman is two weeks dead, and Congress is voting on TARP the next
+morning. The eight "sampled" allocations below are stand-ins for what a policy might produce (archetypal
+portfolios, so they're interpretable), scored exactly as the reward function scores them, using what the market
+truly did over the following five trading days:</p>
+
+<div class="fig">
+  <div class="controls">
+    <span>Malformed-output penalty:</span>
+    <button class="btn active" id="pen1">−1 (our first version)</button>
+    <button class="btn" id="pen5">−5 (the fix)</button>
+  </div>
+  <div id="grpoDemo"></div>
+  <div class="cap"><strong>Fig. 3 — A real GRPO group: week of Oct 2, 2008.</strong> Raw rewards (left bars,
+  scaled log returns) vs. group-normalized advantages (right bars). Equities were annihilated — SPY lost 18.9%
+  in five sessions — yet after normalization, gold-and-Treasuries portfolios earn strongly <em>positive</em>
+  advantages and all-SPY earns a strong negative one. The market's direction is gone; only allocation skill
+  remains. Toggle the penalty to see the bug described below.</div>
+</div>
+
+<div class="callout bad"><span class="tag">A real bug this example caught</span>
+Our first reward function scored unparseable output at −1, reasoning "below zero is bad enough." Look at the
+toggle: with a −1 penalty, <strong>malformed garbage earns a positive advantage on this day</strong> — because
+−1 beats holding equities into a crash, and GRPO only cares about relative standing. A policy trained this way
+could learn to deliberately break its own output format whenever the state smells like a bear market. Silent,
+plausible, catastrophic. The fix (now in <code>rewards.py</code>): the penalty must sit below the <em>worst
+achievable market outcome</em>, not below zero. −5 corresponds to a −22% weekly loss, which a long-only,
+unlevered ETF basket essentially cannot reach. This is reward design in a nutshell: the failure mode wasn't in
+the formula, it was in the interaction between the formula and one week of 2008.</div>
+
+<h3>Fine print worth knowing</h3>
+<p><strong>Zero-variance groups teach nothing.</strong> If all 8 samples are nearly identical (temperature too
+low, or the policy has collapsed onto one answer), std → 0 and the advantages are undefined/zero — no learning
+signal. This is why we train with temperature 1.0: group <em>diversity</em> is the fuel. Watching within-group
+reward std during training is diagnostic #1 (§14).<br>
+<strong>The std division is a double-edged sword.</strong> It equalizes learning signal across calm and violent
+weeks — a 0.3% edge in a quiet week counts like a 5% edge in a crisis. That's mostly what we want (skill, not
+drama), though it slightly rewards "winning tiny coin flips." Known GRPO quirk (some papers drop the std); we
+keep it and note it.<br>
+<strong>It's still on-policy RL.</strong> The clipped ratio lets us take a few gradient epochs per batch, but
+fundamentally the model learns from its own current attempts — exploration included. That's the part DPO
+couldn't give us.</p>
+
+<!-- ================================================================ -->
+<h2 id="s7"><span class="num">7</span>RL on an actual LLM: what the update really touches</h2>
+
+<h3>The policy is a token distribution</h3>
+<p>π<sub>θ</sub>(a|s) for an LLM is the product of next-token probabilities:
+π<sub>θ</sub>(a|s) = Π<sub>t</sub> p<sub>θ</sub>(token<sub>t</sub> | s, token<sub>&lt;t</sub>). Our reward is
+<em>sequence-level</em> — it exists only after the closing brace of the JSON. GRPO handles this by giving every
+token of a completion that completion's advantage: if the risk-off portfolio scored well, <em>all</em> the tokens
+that produced it (the reasoning and the JSON) get their log-probs nudged up together. Crude but effective — and
+it means the model's <em>reasoning style</em> gets shaped by returns too, not just its final numbers.</p>
+
+<h3>KL to the reference: the leash</h3>
+<p>GRPO training adds a penalty β·KL(π<sub>θ</sub> ‖ π<sub>ref</sub>) against the frozen starting model. Without
+it, a few thousand noisy gradient steps can shred general language competence (the model "forgets English" and
+with it, the table-reading ability the whole setup depends on). The leash costs keeping reference log-probs
+around, but LoRA (next) makes that nearly free: the reference model is just the adapter turned off.</p>
+
+<h3>LoRA: train 0.5%, keep 100%</h3>
+<p><strong>Low-Rank Adaptation</strong> freezes all base weights and adds trainable low-rank factors to each
+attention/MLP projection: W → W + BA, with B∈ℝ<sup>d×r</sup>, A∈ℝ<sup>r×d</sup>, rank r = 32 in our config.
+Consequences, in order of importance for us:</p>
+<p><strong>Memory.</strong> Optimizer states (Adam keeps two moments per parameter) exist only for the adapters
+— megabytes, not gigabytes. Full fine-tuning of a 4B model needs ~48 GB for weights+grads+Adam <em>before</em>
+activations; LoRA fits the whole GRPO loop on one A100.<br>
+<strong>Free reference model.</strong> π<sub>ref</sub> = base weights with adapters disabled. No second copy.<br>
+<strong>Regularization.</strong> A rank-32 subspace simply cannot memorize 591 training days. In most domains
+LoRA's limited capacity is a compromise; in a domain where the training signal is 92% noise, a straitjacket on
+capacity is arguably a feature.</p>
+
+<h3>Why Qwen3-4B, and the VRAM arithmetic</h3>
+<p>The model must already read tables, follow JSON format instructions, and reason numerically — we're buying
+those skills from pretraining and only teaching <em>allocation</em>. Qwen3-4B-Instruct is about the smallest
+model that does all three reliably, and size is compounding here: GRPO generates 8 completions × 591 prompts
+× multiple epochs, so a 4B with vLLM samples fast enough to keep training generation-bound rather than
+week-bound. (Unsloth is the glue: fused training kernels plus an in-process vLLM engine that shares the weights,
+so generation and training don't need two copies.)</p>
+
+<div class="fig">
+<svg viewBox="0 0 860 200" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,sans-serif" font-size="12">
+  <text x="10" y="20" fill="#d7dde8" font-weight="600">A100 40 GB budget — GRPO + LoRA (ours)</text>
+  <rect x="10" y="30" width="170" height="30" fill="#5eb0ff" opacity="0.85" rx="4"/>
+  <rect x="182" y="30" width="20" height="30" fill="#4ade80" rx="4"/>
+  <rect x="204" y="30" width="240" height="30" fill="#c084fc" opacity="0.8" rx="4"/>
+  <rect x="446" y="30" width="120" height="30" fill="#fbbf24" opacity="0.7" rx="4"/>
+  <rect x="568" y="30" width="240" height="30" fill="#1c2330" stroke="#2a3446" stroke-dasharray="4 3" rx="4"/>
+  <text x="95" y="50" text-anchor="middle" fill="#0e1116" font-weight="600">weights 8GB</text>
+  <text x="192" y="24" text-anchor="middle" fill="#4ade80" font-size="10">LoRA+Adam ~1GB</text>
+  <text x="324" y="50" text-anchor="middle" fill="#0e1116" font-weight="600">vLLM KV cache ~12GB</text>
+  <text x="506" y="50" text-anchor="middle" fill="#0e1116" font-weight="600">activations ~6GB</text>
+  <text x="688" y="50" text-anchor="middle" fill="#8b95a7">headroom ~13GB</text>
+
+  <text x="10" y="105" fill="#d7dde8" font-weight="600">Same budget — PPO with full-model critic (why we didn't)</text>
+  <rect x="10" y="115" width="170" height="30" fill="#5eb0ff" opacity="0.85" rx="4"/>
+  <rect x="182" y="115" width="170" height="30" fill="#f87171" opacity="0.85" rx="4"/>
+  <rect x="354" y="115" width="170" height="30" fill="#f87171" opacity="0.5" rx="4"/>
+  <rect x="526" y="115" width="240" height="30" fill="#c084fc" opacity="0.8" rx="4"/>
+  <rect x="768" y="115" width="120" height="30" fill="#fbbf24" opacity="0.7" rx="4"/>
+  <text x="95" y="135" text-anchor="middle" fill="#0e1116" font-weight="600">policy 8GB</text>
+  <text x="267" y="135" text-anchor="middle" fill="#0e1116" font-weight="600">critic 8GB</text>
+  <text x="439" y="135" text-anchor="middle" fill="#0e1116" font-weight="600">critic Adam 8GB+</text>
+  <text x="646" y="135" text-anchor="middle" fill="#0e1116" font-weight="600">KV cache</text>
+  <text x="828" y="135" text-anchor="middle" fill="#0e1116" font-size="10">activ…</text>
+  <text x="10" y="175" fill="#f87171" font-size="11">→ over budget before activations; PPO on Colab means a smaller model or 4-bit compromises</text>
+</svg>
+<div class="cap"><strong>Fig. 4 — The memory argument, approximately to scale.</strong> Numbers are rough
+(bf16 weights, rank-32 LoRA, 2k context) but the shape is what matters: the critic and its optimizer states
+are pure overhead that GRPO replaces with "sample 8 instead of 1."</div>
+</div>
+
+<!-- ================================================================ -->
+<h2 id="s8"><span class="num">8</span>Our environment, line by line</h2>
+
+<h3>State: what the model sees</h3>
+<p>This is a real training prompt from the repo (date 2010-04-08), verbatim:</p>
+<div class="fig"><pre id="samplePrompt" style="margin:0; max-height:420px; overflow-y:auto;"></pre>
+<div class="cap"><strong>Fig. 5 — One actual state.</strong> Six features × 12 ETFs, ~450 tokens. The model
+answered prompts exactly like this 591 times per epoch during training.</div></div>
+
+<p>Why these six features and not raw price series?</p>
+<p><strong>Multi-horizon returns (1d/1w/1m/3m)</strong> — momentum and reversal are the two best-documented
+effects in the empirical asset-pricing literature; giving four horizons lets the model discover for itself which
+ones matter. <strong>Realized vol (21d, annualized)</strong> — the classic risk-scaling input; also the
+strongest single predictor of <em>future</em> vol. <strong>Distance from 52-week high</strong> — a slow-moving
+trend/drawdown state variable. All six are computable from prices available <em>at that day's close</em> —
+zero lookahead, enforced in <code>data.py</code> by construction (rolling windows only ever look backward).</p>
+<p>And why a compact table instead of hundreds of raw prices? Token budget (591 prompts × 8 generations ×
+epochs makes prompt length a first-order cost), and LLM numeracy: models reason far better over a dozen
+pre-digested statistics than over long floating-point sequences. Feature engineering didn't die with deep RL;
+it moved into the prompt.</p>
+
+<h3>Action: generous parsing, on purpose</h3>
+<p>The model outputs free text ending in JSON. The parser (<code>rewards.py</code>) takes the <em>last</em>
+JSON object, keeps only known tickers, clips weights to [0,1], renormalizes if the sum exceeds 1, and sweeps
+any shortfall into CASH. Why so forgiving? Because at step 0 the policy is just a chatty instruct model —
+if we demanded perfect format we'd start with a reward of −5 on everything, and GRPO groups with uniform
+rewards have zero advantage: <em>flat reward = no gradient = no learning, ever</em>. Generous parsing gets
+market signal flowing immediately; format precision then improves on its own, since malformed output still
+costs −5 whenever siblings parse. (This "make sure the reward isn't flat at initialization" concern is the
+same reason DeepSeek added format rewards for R1.)</p>
+
+<h3>Reward: every choice in one formula</h3>
+<div class="eq">r = 20 · log(1 + R<sub>portfolio, next 5 days</sub>)&nbsp;&nbsp;&nbsp;(or −5 if unparseable)</div>
+<p><strong>Why realized return</strong> — it's the actual objective; anything else is a proxy we'd overfit
+(§9 dismantles the main alternative). <strong>Why log</strong> — log returns compound additively, so
+maximizing their expectation maximizes long-run growth rather than favoring lottery-like arithmetic returns;
+log also punishes a −20% more than it rewards a +20%, which matches how drawdowns actually hurt compounding.
+<strong>Why ×20</strong> — cosmetic for GRPO (normalization eats scale) but keeps market rewards and the −5
+penalty on comparable axes and keeps logged numbers human-readable. <strong>Why 5 days</strong> — the central
+noise/sample-count tradeoff: daily rewards would give 5× more samples of nearly pure noise; monthly would give
+cleaner signal but only ~140 training states. Weekly is the compromise, and it matches the rebalancing cadence
+the backtester charges costs for.</p>
+
+<!-- ================================================================ -->
+<h2 id="s9"><span class="num">9</span>Design decisions &amp; failure modes</h2>
+
+<h3>Decision: the model allocates; it does not write code</h3>
+<p>The obvious alternative — "the model writes a trading strategy in Python, reward = backtest Sharpe" — was
+rejected deliberately. Code-as-action makes the action space enormous and the reward hackable in ways that are
+hard to even enumerate: a strategy script can overfit its own backtest window, exploit simulator quirks, or
+degenerate into if-date-then lookup tables. Weights-as-action keeps the action space a 13-dimensional simplex,
+every reward attributable to one decision on one day, and the failure modes analyzable (see table below).
+The model's coding/reasoning ability still earns its keep — reading the table, doing the arithmetic, producing
+clean JSON — but the <em>surface area for cheating</em> is a fraction of code-gen's.</p>
+
+<h3>Decision: never reward the "optimal portfolio"</h3>
+<p>The tempting supervised framing — compute the hindsight-best portfolio per day, train the model to match it —
+is a trap worth understanding precisely. On a 5-day horizon, the hindsight-optimal long-only portfolio is
+almost always <strong>100% in whichever single asset happened to top the week</strong> — a label that is mostly
+noise (SNR ≈ 0.08, remember). Training to imitate it teaches maximal concentration in whatever wiggled up last
+week: you'd be doing supervised learning where the labels themselves are lottery numbers. RL with a
+group-relative baseline instead asks the modest, answerable question — "was this allocation better than its
+siblings this week?" — and lets 591 weeks of small, relative signals accumulate into a policy. Slower, but it's
+learning the thing we actually mean.</p>
+
+<h3>Decision: long-only, no leverage, CASH always available</h3>
+<p>Partly realism, mostly reward safety: with long-only unlevered weights, the worst weekly outcome is bounded
+by the worst asset's week (hence the −5 penalty argument in §6). Allow shorts or leverage and the reward
+becomes unbounded in both directions — a single 10× levered lucky week could dominate a training epoch. Walk
+before running; a long/short version is a clean later ablation.</p>
+
+<h3>The failure-mode table</h3>
+<table class="data">
+<tr><th style="text-align:left">Failure mode</th><th style="text-align:left">Mechanism</th><th style="text-align:left">Defense (status)</th></tr>
+<tr><td>Format sabotage in bear states</td><td style="text-align:left">penalty above worst market outcome ⇒ garbage gets positive advantage</td><td style="text-align:left">penalty −5 &lt; any achievable reward (<span class="pos">fixed, §6</span>)</td></tr>
+<tr><td>Lottery-seeking concentration</td><td style="text-align:left">all-in on the most volatile asset maximizes chance of topping the group</td><td style="text-align:left">log reward penalizes blowups; group std-normalization caps per-week payoff; vol-penalty term reserved as an option (<span class="pos">partially structural</span>)</td></tr>
+<tr><td>Date memorization</td><td style="text-align:left">prompt contains the date; pretraining knows 2008–2024 market history</td><td style="text-align:left">honest open issue — see below (<span class="neg">unresolved</span>)</td></tr>
+<tr><td>Policy collapse</td><td style="text-align:left">all 8 generations identical ⇒ zero advantage ⇒ learning stalls (or KL explodes)</td><td style="text-align:left">temperature 1.0, KL leash, monitor group reward std (<span class="pos">monitored, §14</span>)</td></tr>
+<tr><td>Split leakage</td><td style="text-align:left">tuning on test data via repeated peeking</td><td style="text-align:left">val for iteration; test touched once, at the end (<span class="pos">protocol</span>)</td></tr>
+</table>
+
+<div class="callout warn"><span class="tag">The honest one: pretraining leakage</span>
+Qwen3 read the internet. It <em>knows</em> October 2008 crashed and that March 2020 recovered in a V-shape.
+Since our prompts contain the date, a model could score well on train and even val years by recalling history
+rather than reading the table — and that skill is worthless going forward. Mitigations, in order of rigor:
+(a) strip the year from prompts (keep month for seasonality) and rely on features alone — the planned ablation:
+train both variants, compare on data past the model's knowledge cutoff; (b) note that our test split ends in
+mid-2026, and Qwen3-4B-Instruct-2507's knowledge tapers in 2025, so late-test performance is the cleanest
+signal we have; (c) accept that features themselves fingerprint famous regimes (a 2008-shaped vol column is
+recognizable dateless). No perfect fix exists for backtesting an entity that has read history — this is a
+fundamental caveat of LLM-based trading research, and pretending otherwise would be the real error.</div>
+<!-- ================================================================ -->
+<h2 id="s10"><span class="num">10</span>Data, universe, and time splits</h2>
+
+<h3>Why these 12 ETFs</h3>
+<p>SPY, QQQ, IWM, EFA, EEM (equities across cap, geography), TLT, IEF, LQD, HYG (rates duration and credit),
+GLD, DBC (real assets), VNQ (property) — plus CASH. Four reasons this beats a basket of single stocks:</p>
+<p><strong>No survivorship bias.</strong> Train on today's S&amp;P constituents over 2008–2019 and you've
+secretly conditioned on "companies that survived 2008" — a famous way to hallucinate alpha. Broad ETFs don't
+delist on you.<br>
+<strong>Genuine diversity of behavior.</strong> The interesting allocation decisions (stocks vs bonds vs gold
+vs cash) live at the asset-class level; that's where a weekly rebalancer can plausibly add value.<br>
+<strong>Liquidity realism.</strong> These are among the most liquid instruments on earth, so the 10 bps cost
+assumption in the backtest is honest rather than optimistic.<br>
+<strong>History.</strong> All twelve trade back to April 2007 — which matters because we <em>want</em> 2008 in
+the training set: it's the single most instructive regime in the sample.</p>
+
+<h3>The splits, and why they're cut where they are</h3>
+<div class="fig">
+<svg viewBox="0 0 860 120" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,sans-serif" font-size="12">
+  <rect x="10" y="35" width="530" height="40" rx="6" fill="#5eb0ff" opacity="0.35" stroke="#5eb0ff"/>
+  <rect x="546" y="35" width="130" height="40" rx="6" fill="#fbbf24" opacity="0.35" stroke="#fbbf24"/>
+  <rect x="682" y="35" width="155" height="40" rx="6" fill="#4ade80" opacity="0.35" stroke="#4ade80"/>
+  <text x="275" y="60" text-anchor="middle" fill="#d7dde8" font-weight="600">TRAIN 2008–2019 · 591 prompts</text>
+  <text x="611" y="60" text-anchor="middle" fill="#d7dde8" font-weight="600">VAL 20–22</text>
+  <text x="759" y="60" text-anchor="middle" fill="#d7dde8" font-weight="600">TEST 23–26</text>
+  <text x="275" y="95" text-anchor="middle" fill="#8b95a7" font-size="11">GFC · QE bull · 2011 &amp; 2015 corrections · 2018 vol spike</text>
+  <text x="611" y="95" text-anchor="middle" fill="#8b95a7" font-size="11">COVID · '22 bond bear</text>
+  <text x="759" y="95" text-anchor="middle" fill="#8b95a7" font-size="11">touched exactly once</text>
+  <text x="10" y="25" fill="#8b95a7" font-size="11">2008</text>
+  <text x="837" y="25" fill="#8b95a7" font-size="11" text-anchor="end">mid-2026</text>
+</svg>
+<div class="cap"><strong>Fig. 6 — Chronological, never random.</strong> A random split would put Tuesday in
+training and Wednesday in test — with autocorrelated markets that's leakage, and it's the most common silent
+error in published trading-ML results. Time moves one way; so do our splits.</div>
+</div>
+
+<p>The validation years are chosen adversarially on purpose: 2020 (fastest crash in history + V-recovery) and
+2022 (the year <em>bonds</em> crashed, killing every "TLT saves you" reflex learned from 2008–2019). A policy
+that generalizes across both is doing something. Val is where we iterate on hyperparameters and reward tweaks;
+<strong>test gets opened once</strong>, after we've frozen everything, and its number is the number.</p>
+
+<!-- ================================================================ -->
+<h2 id="s11"><span class="num">11</span>The backtester &amp; the five baselines</h2>
+
+<h3>Simulation mechanics that keep us honest</h3>
+<p>The backtester (<code>backtest.py</code>) is the same engine for the LLM and every baseline — nobody gets a
+friendlier simulator. Three details do the honesty work:</p>
+<p><strong>Decisions at the close, P&amp;L from the next day.</strong> The policy sees features through day
+<em>t</em>'s close and its weights start earning day <em>t+1</em>. No same-day clairvoyance.<br>
+<strong>Weights drift.</strong> Between weekly rebalances, winners grow their own weight, exactly as a real
+unattended portfolio would.<br>
+<strong>Transaction costs: 10 bps × turnover.</strong> Every unit of |Δweight| costs a dime per $100. This is
+what disciplines hyperactive policies — see momentum below, which pays ≈ 2%/year in friction (43% weekly
+turnover × 10 bps × 52 weeks). An RL agent that thrashes will bleed the same way.</p>
+
+<h3>The five baselines, and what beating each one proves</h3>
+<p><strong>SPY buy&amp;hold</strong> — the null hypothesis. Below this, the project earns nothing.
+<strong>Equal weight</strong> — naive diversification; embarrassingly hard to beat (a running joke in the
+portfolio literature). <strong>60/40</strong> — the classic balanced allocation; the risk-adjusted bar.
+<strong>Momentum</strong> — top-3 assets by 3-month return, positive-momentum filter, else cash: the strongest
+<em>simple</em> active strategy, i.e. "could a one-liner do your job?". <strong>Inverse-vol</strong> — weights
+∝ 1/σ, the risk-parity instinct. Together they span passive/diversified/active/defensive — if the agent beats
+all five out-of-sample on risk-adjusted terms, it learned something none of those one-line priors contain.</p>
+
+<div class="fig">
+  <div class="controls">
+    <button class="btn active" data-split="train">Train 2008–19</button>
+    <button class="btn" data-split="val">Val 2020–22</button>
+    <button class="btn" data-split="test">Test 2023–26</button>
+  </div>
+  <div id="eqChart"></div>
+  <div class="legend" id="eqLegend"></div>
+  <div id="metricsTable"></div>
+  <div class="cap"><strong>Fig. 7 — The competition, on real data.</strong> Growth of $1 (log scale) and full
+  metrics for each baseline, from the repo's actual backtests. Note how differently the splits behave: train
+  contains the 2008 collapse (SPY −51.5% drawdown); val is a meat grinder where <em>nothing</em> worked
+  (best Sharpe 0.40 — diversification failed in 2022 as stocks and bonds fell together); test is a monster
+  bull market where SPY's Sharpe of 1.43 sets a brutally high bar. This spread <em>is the point</em>: an agent
+  must survive all three personalities.</div>
+</div>
+
+<!-- ================================================================ -->
+<h2 id="s12"><span class="num">12</span>Metrics: what "good" means</h2>
+
+<p>Raw return is not the objective — leverage-free luck can print any single number. The scoreboard:</p>
+<p><strong>CAGR</strong> — geometric annual growth: (final/initial)<sup>1/years</sup> − 1. The compounding-aware
+average.<br>
+<strong>Volatility</strong> — std of daily returns × √252 (variance grows linearly in time for ~independent
+returns, so std grows with the square root; 252 trading days/year).<br>
+<strong>Sharpe ratio</strong> — mean excess return / vol, annualized. Return per unit of risk taken; the
+headline number. Rule of thumb: ≈0.5 respectable, ≈1.0 strong for asset-allocation strategies.<br>
+<strong>Sortino</strong> — Sharpe but the denominator counts only downside days: upside "risk" isn't risk.<br>
+<strong>Max drawdown</strong> — worst peak-to-trough loss; the "would you have quit?" statistic. A −50%
+drawdown needs +100% just to break even — this asymmetry is why the log reward's loss-aversion (§8) matters.<br>
+<strong>Calmar</strong> — CAGR / |max drawdown|: growth per unit of worst-case pain.<br>
+<strong>Turnover</strong> — average |Δweights| per rebalance: how much friction the strategy generates.</p>
+
+<div class="callout"><span class="tag">Success criterion, stated before training</span>
+The agent should beat SPY, equal-weight, and 60/40 on <strong>Sharpe</strong> on the untouched test split,
+with max drawdown no worse than 60/40's. Deciding the bar <em>before</em> seeing results is the cheapest
+anti-self-deception device known.</div>
+
+<!-- ================================================================ -->
+<h2 id="s13"><span class="num">13</span>Statistical humility</h2>
+
+<p>The most important chart in this document is the least glamorous:</p>
+
+<div class="fig">
+  <div id="noiseHist"></div>
+  <div class="cap"><strong>Fig. 8 — The reward signal's habitat: all SPY 5-day returns, 2008–2019 (real
+  data).</strong> Mean +0.21%, standard deviation 2.45%. The green line is the mean — the "signal" — and it is
+  barely distinguishable from zero at this resolution. Every single reward our agent receives is one draw from
+  a distribution like this. Per-decision signal-to-noise ≈ 0.08.</div>
+</div>
+
+<p>Consequences you should carry into every result you'll ever read off this project:</p>
+<p><strong>Sharpe ratios have huge error bars.</strong> The standard error of a measured Sharpe is roughly
+√((1 + SR²/2)/T) with T in years. On the 3-year validation split, that's ≈ 0.6 — meaning a measured
+Sharpe of 0.9 vs 0.4 <em>might</em> be a coin flip. Only consistency across splits, plus the untouched test
+set, plus stability across training reruns, accumulates into belief.<br>
+<strong>Multiple comparisons are the house's edge.</strong> Ten reward tweaks evaluated on val = ten lottery
+tickets on val's particular noise. That's exactly why test is quarantined, and why "it beat SPY on val once"
+will never be the headline.<br>
+<strong>The realistic goal</strong> is not a money printer. It's a policy that <em>demonstrably reallocates
+sensibly across regimes</em> — defensiveness in stress, participation in trends — and clears simple baselines
+risk-adjusted, out-of-sample. That alone would be a genuinely interesting result for a 4B model trained on 591
+weeks in a Colab notebook. Anything more, we treat as suspect until it survives the test split.</p>
+
+<!-- ================================================================ -->
+<h2 id="s14"><span class="num">14</span>The Colab run: knobs &amp; dashboards</h2>
+
+<h3>Every hyperparameter, justified</h3>
+<table class="data">
+<tr><th style="text-align:left">Knob</th><th>Value</th><th style="text-align:left">Why</th></tr>
+<tr><td>num_generations (G)</td><td>8</td><td style="text-align:left">group size = baseline quality; 8 balances signal vs 8× generation cost per prompt</td></tr>
+<tr><td>temperature (train)</td><td>1.0</td><td style="text-align:left">group diversity is the learning signal — identical siblings ⇒ zero advantage (§6)</td></tr>
+<tr><td>temperature (eval)</td><td>0.2</td><td style="text-align:left">deployment wants the mode of the policy, not a sample from it</td></tr>
+<tr><td>learning rate</td><td>5e-6, cosine</td><td style="text-align:left">standard GRPO-LoRA range; noisy rewards argue for the low end</td></tr>
+<tr><td>epochs</td><td>2</td><td style="text-align:left">591 prompts is small; more epochs = re-mining the same weeks' noise</td></tr>
+<tr><td>max_completion_length</td><td>256</td><td style="text-align:left">enough for ~80 words of reasoning + JSON; caps generation cost</td></tr>
+<tr><td>LoRA rank / α</td><td>32 / 64</td><td style="text-align:left">capacity for allocation style, not for memorizing 591 dates (§7)</td></tr>
+<tr><td>batch × grad-accum</td><td>8 × 2</td><td style="text-align:left">effective 16; with G=8 that's 128 scored portfolios per optimizer step</td></tr>
+</table>
+
+<h3>What to watch while it trains</h3>
+<p><strong>Invalid-output rate → 0 within ~50 steps</strong> — the format lesson is easy; if it isn't learned
+fast, something is wrong with parsing or the penalty.<br>
+<strong>Mean reward: drifting up, gently.</strong> Don't expect a hockey stick — the ceiling on weekly
+allocation skill is low (§13). A slow climb is the honest signature.<br>
+<strong>Within-group reward std: must stay &gt; 0.</strong> Collapse to zero means the policy converged to one
+answer per state — learning is over, for better or worse.<br>
+<strong>Completion length &amp; KL: boring is good.</strong> Ballooning length or exploding KL = the policy
+drifting into reward-hacking or gibberish; the leash (β) may need tightening.</p>
+
+<h3>Then, in order</h3>
+<p>1 — Push this repo to GitHub (the notebook clones it — data JSONL included, so Colab needs no market access).<br>
+2 — Run <code>notebooks/train_grpo_colab.ipynb</code> on an A100 runtime; ~2–4 hours.<br>
+3 — Eval on val vs the five baselines; iterate (reward tweaks, the date-anonymization ablation from §9) on val only.<br>
+4 — When frozen: one run on test. That number goes in the README, whatever it is.</p>
+
+<hr style="border:none;border-top:1px solid var(--border);margin:60px 0 20px">
+<p class="footnote">Built July 1, 2026 · all figures computed from the repo's own data pipeline and backtester
+(<code>scripts/export_teaching_data.py</code>) · prices via Yahoo Finance, 2007-04 → 2026-07 ·
+GRPO: Shao et al., <em>DeepSeekMath</em> (2024) · PPO: Schulman et al. (2017) · DPO: Rafailov et al. (2023) ·
+LoRA: Hu et al. (2021).</p>
+
+</div><!-- /wrap -->
+
+<script>
+const DATA = {"metrics": {"train": {"spy": {"cagr": 0.0983, "vol": 0.1924, "sharpe": 0.5837, "sortino": 0.6932, "max_drawdown": -0.5148, "calmar": 0.191, "total_return": 2.0772, "avg_turnover": 0.0034}, "equal_weight": {"cagr": 0.0634, "vol": 0.1248, "sharpe": 0.5545, "sortino": 0.6842, "max_drawdown": -0.3696, "calmar": 0.1715, "total_return": 1.0882, "avg_turnover": 0.017}, "60_40": {"cagr": 0.0804, "vol": 0.1065, "sharpe": 0.7793, "sortino": 0.9488, "max_drawdown": -0.3103, "calmar": 0.2591, "total_return": 1.5263, "avg_turnover": 0.0133}, "momentum": {"cagr": 0.0871, "vol": 0.1336, "sharpe": 0.6916, "sortino": 0.8906, "max_drawdown": -0.2144, "calmar": 0.406, "total_return": 1.7192, "avg_turnover": 0.4504}, "inverse_vol": {"cagr": 0.0547, "vol": 0.0784, "sharpe": 0.719, "sortino": 0.9211, "max_drawdown": -0.2494, "calmar": 0.2193, "total_return": 0.8932, "avg_turnover": 0.0938}}, "val": {"spy": {"cagr": 0.0722, "vol": 0.25, "sharpe": 0.4046, "sortino": 0.5021, "max_drawdown": -0.3372, "calmar": 0.2142, "total_return": 0.2324, "avg_turnover": 0.0132}, "equal_weight": {"cagr": 0.0241, "vol": 0.1511, "sharpe": 0.2334, "sortino": 0.2787, "max_drawdown": -0.2232, "calmar": 0.1079, "total_return": 0.0739, "avg_turnover": 0.0283}, "60_40": {"cagr": 0.0343, "vol": 0.1491, "sharpe": 0.3008, "sortino": 0.3801, "max_drawdown": -0.2113, "calmar": 0.1623, "total_return": 0.1063, "avg_turnover": 0.0244}, "momentum": {"cagr": 0.0322, "vol": 0.1565, "sharpe": 0.2808, "sortino": 0.3453, "max_drawdown": -0.264, "calmar": 0.1218, "total_return": 0.0994, "avg_turnover": 0.4323}, "inverse_vol": {"cagr": -0.0001, "vol": 0.112, "sharpe": 0.0548, "sortino": 0.0671, "max_drawdown": -0.2045, "calmar": -0.0007, "total_return": -0.0004, "avg_turnover": 0.0992}}, "test": {"spy": {"cagr": 0.2286, "vol": 0.1518, "sharpe": 1.4326, "sortino": 1.9492, "max_drawdown": -0.1876, "calmar": 1.219, "total_return": 1.044, "avg_turnover": 0.0114}, "equal_weight": {"cagr": 0.143, "vol": 0.0986, "sharpe": 1.4054, "sortino": 2.0005, "max_drawdown": -0.098, "calmar": 1.4584, "total_return": 0.5905, "avg_turnover": 0.0233}, "60_40": {"cagr": 0.1462, "vol": 0.0965, "sharpe": 1.4626, "sortino": 2.1034, "max_drawdown": -0.106, "calmar": 1.3792, "total_return": 0.6062, "avg_turnover": 0.0189}, "momentum": {"cagr": 0.1455, "vol": 0.1396, "sharpe": 1.0436, "sortino": 1.3285, "max_drawdown": -0.1088, "calmar": 1.3382, "total_return": 0.6029, "avg_turnover": 0.3829}, "inverse_vol": {"cagr": 0.1076, "vol": 0.0782, "sharpe": 1.3464, "sortino": 1.9321, "max_drawdown": -0.077, "calmar": 1.3961, "total_return": 0.4258, "avg_turnover": 0.0908}}}, "equity": {"train": {"dates": ["2008-01-03", "2008-02-04", "2008-03-05", "2008-04-04", "2008-05-05", "2008-06-04", "2008-07-03", "2008-08-04", "2008-09-03", "2008-10-02", "2008-10-31", "2008-12-02", "2009-01-02", "2009-02-03", "2009-03-05", "2009-04-03", "2009-05-05", "2009-06-04", "2009-07-06", "2009-08-04", "2009-09-02", "2009-10-02", "2009-11-02", "2009-12-02", "2010-01-04", "2010-02-03", "2010-03-05", "2010-04-06", "2010-05-05", "2010-06-04", "2010-07-06", "2010-08-04", "2010-09-02", "2010-10-04", "2010-11-02", "2010-12-02", "2011-01-03", "2011-02-02", "2011-03-04", "2011-04-04", "2011-05-04", "2011-06-03", "2011-07-05", "2011-08-03", "2011-09-01", "2011-10-03", "2011-11-01", "2011-12-01", "2012-01-03", "2012-02-02", "2012-03-05", "2012-04-03", "2012-05-03", "2012-06-04", "2012-07-03", "2012-08-02", "2012-08-31", "2012-10-02", "2012-11-02", "2012-12-04", "2013-01-04", "2013-02-05", "2013-03-07", "2013-04-08", "2013-05-07", "2013-06-06", "2013-07-08", "2013-08-06", "2013-09-05", "2013-10-04", "2013-11-04", "2013-12-04", "2014-01-06", "2014-02-05", "2014-03-07", "2014-04-07", "2014-05-07", "2014-06-06", "2014-07-08", "2014-08-06", "2014-09-05", "2014-10-06", "2014-11-04", "2014-12-04", "2015-01-06", "2015-02-05", "2015-03-09", "2015-04-08", "2015-05-07", "2015-06-08", "2015-07-08", "2015-08-06", "2015-09-04", "2015-10-06", "2015-11-04", "2015-12-04", "2016-01-06", "2016-02-05", "2016-03-08", "2016-04-07", "2016-05-06", "2016-06-07", "2016-07-07", "2016-08-05", "2016-09-06", "2016-10-05", "2016-11-03", "2016-12-05", "2017-01-05", "2017-02-06", "2017-03-08", "2017-04-06", "2017-05-08", "2017-06-07", "2017-07-07", "2017-08-07", "2017-09-06", "2017-10-05", "2017-11-03", "2017-12-05", "2018-01-05", "2018-02-06", "2018-03-08", "2018-04-09", "2018-05-08", "2018-06-07", "2018-07-09", "2018-08-07", "2018-09-06", "2018-10-05", "2018-11-05", "2018-12-06", "2019-01-08", "2019-02-07", "2019-03-11", "2019-04-09", "2019-05-09", "2019-06-10", "2019-07-10", "2019-08-08", "2019-09-09", "2019-10-08", "2019-11-06", "2019-12-06", "2019-12-31"], "curves": {"spy": [1.0, 1.0, 1.0, 1.0, 1.0573, 1.0362, 0.953, 0.9431, 0.9649, 0.8488, 0.7348, 0.6471, 0.7112, 0.6407, 0.5264, 0.6493, 0.6979, 0.7284, 0.6958, 0.7803, 0.7735, 0.798, 0.8122, 0.8662, 0.8871, 0.8597, 0.8943, 0.9356, 0.9182, 0.8396, 0.8124, 0.8922, 0.8645, 0.9031, 0.9485, 0.9731, 1.014, 1.0415, 1.0573, 1.0682, 1.0808, 1.0455, 1.0779, 1.0164, 0.9743, 0.8902, 0.9879, 1.0119, 1.039, 1.0812, 1.1143, 1.1561, 1.1397, 1.0484, 1.1305, 1.1241, 1.1613, 1.1951, 1.1708, 1.1683, 1.2192, 1.2582, 1.2892, 1.3069, 1.3604, 1.3615, 1.379, 1.4276, 1.3959, 1.4274, 1.4945, 1.519, 1.5496, 1.4885, 1.5998, 1.5734, 1.6036, 1.6676, 1.683, 1.6472, 1.7247, 1.6913, 1.7325, 1.7892, 1.7312, 1.7858, 1.8052, 1.8099, 1.8177, 1.8143, 1.7886, 1.822, 1.6842, 1.7386, 1.8491, 1.8426, 1.7581, 1.662, 1.7544, 1.8127, 1.8285, 1.8814, 1.872, 1.9493, 1.9569, 1.9362, 1.8747, 1.9845, 2.0449, 2.0678, 2.1367, 2.1358, 2.1741, 2.2104, 2.2071, 2.2596, 2.2507, 2.333, 2.3677, 2.4111, 2.5177, 2.4782, 2.5239, 2.4129, 2.4676, 2.5643, 2.5807, 2.652, 2.676, 2.6849, 2.5503, 2.5172, 2.4093, 2.5347, 2.6126, 2.7077, 2.7016, 2.7233, 2.8279, 2.7806, 2.824, 2.745, 2.9217, 2.9956, 3.0772], "equal_weight": [1.0, 1.0, 1.0, 1.0, 1.0279, 1.0218, 0.9866, 0.9699, 0.9664, 0.874, 0.7682, 0.7228, 0.8114, 0.7526, 0.672, 0.774, 0.8162, 0.8597, 0.8293, 0.9089, 0.9016, 0.933, 0.9475, 1.0012, 1.0103, 0.9799, 1.014, 1.0436, 1.0355, 0.9931, 0.9931, 1.0644, 1.0617, 1.1052, 1.145, 1.1449, 1.1749, 1.1796, 1.2033, 1.2201, 1.2393, 1.23, 1.2397, 1.2305, 1.2202, 1.1299, 1.2213, 1.2215, 1.2392, 1.2986, 1.3099, 1.3141, 1.3116, 1.2462, 1.3155, 1.311, 1.3478, 1.37, 1.3446, 1.3603, 1.3839, 1.3962, 1.3983, 1.4084, 1.4351, 1.3962, 1.3566, 1.3871, 1.3767, 1.4131, 1.4424, 1.4258, 1.4337, 1.4241, 1.4875, 1.4818, 1.499, 1.5287, 1.5441, 1.5262, 1.5568, 1.5048, 1.5255, 1.5343, 1.5109, 1.566, 1.5322, 1.574, 1.5524, 1.5301, 1.5091, 1.5044, 1.4427, 1.4807, 1.5086, 1.4843, 1.4381, 1.4024, 1.4692, 1.4977, 1.5236, 1.563, 1.5792, 1.6154, 1.6396, 1.6158, 1.572, 1.5778, 1.6213, 1.6359, 1.6331, 1.6654, 1.6736, 1.711, 1.6907, 1.7402, 1.7604, 1.7759, 1.796, 1.7996, 1.8497, 1.8118, 1.822, 1.8071, 1.827, 1.8562, 1.8604, 1.8585, 1.851, 1.828, 1.7882, 1.7802, 1.7673, 1.8335, 1.8595, 1.9083, 1.8911, 1.9101, 1.974, 1.9645, 1.9944, 1.9752, 2.0312, 2.0453, 2.0882], "60_40": [1.0, 1.0, 1.0, 1.0, 1.0237, 1.01, 0.9623, 0.9595, 0.9817, 0.9117, 0.8338, 0.8113, 0.8651, 0.8052, 0.7195, 0.8179, 0.8494, 0.8599, 0.8425, 0.9001, 0.9061, 0.9274, 0.9334, 0.9762, 0.9768, 0.9645, 0.9908, 1.0115, 1.0135, 0.974, 0.9643, 1.0232, 1.0146, 1.0481, 1.0784, 1.0838, 1.1013, 1.1174, 1.1283, 1.1385, 1.1553, 1.1445, 1.1625, 1.1419, 1.1331, 1.0854, 1.1523, 1.1661, 1.1921, 1.2273, 1.2448, 1.2628, 1.2672, 1.2212, 1.2755, 1.2771, 1.3025, 1.324, 1.3048, 1.3096, 1.3333, 1.3561, 1.3789, 1.4013, 1.4346, 1.4248, 1.4114, 1.4445, 1.4096, 1.4477, 1.4918, 1.4991, 1.5126, 1.4903, 1.5528, 1.5422, 1.5669, 1.606, 1.6182, 1.6028, 1.6494, 1.6333, 1.6635, 1.7031, 1.6863, 1.7268, 1.7194, 1.7399, 1.7311, 1.7187, 1.7157, 1.7353, 1.6655, 1.7054, 1.7596, 1.7545, 1.7126, 1.6765, 1.7323, 1.7775, 1.784, 1.8183, 1.8324, 1.8674, 1.8737, 1.8541, 1.816, 1.8459, 1.8838, 1.8957, 1.9253, 1.9399, 1.9606, 1.9952, 1.9814, 2.0201, 2.0261, 2.0562, 2.0767, 2.0976, 2.1476, 2.1086, 2.1303, 2.0819, 2.0994, 2.154, 2.1685, 2.1993, 2.2201, 2.2032, 2.1421, 2.1493, 2.1084, 2.1809, 2.2243, 2.2844, 2.287, 2.3221, 2.3837, 2.386, 2.4142, 2.3837, 2.4553, 2.4912, 2.5263], "momentum": [1.0, 1.0, 1.0, 1.0, 1.027, 1.0342, 1.0189, 0.9279, 0.9277, 0.9028, 0.8844, 0.9685, 1.0085, 0.9514, 0.9225, 0.94, 1.0298, 1.0826, 1.0019, 1.1279, 1.0956, 1.155, 1.1739, 1.2726, 1.2446, 1.1738, 1.2644, 1.3568, 1.3575, 1.2257, 1.2323, 1.2239, 1.2743, 1.3217, 1.3792, 1.4123, 1.4869, 1.5206, 1.5722, 1.5842, 1.581, 1.5861, 1.6011, 1.7007, 1.8248, 1.8625, 1.8295, 1.7436, 1.7496, 1.8612, 1.8701, 1.9187, 1.8976, 1.8484, 1.8589, 1.8732, 1.8322, 1.8494, 1.8038, 1.8167, 1.9147, 1.9231, 1.9453, 1.9862, 2.0404, 1.9993, 2.0331, 2.1232, 2.0754, 2.1499, 2.2139, 2.2072, 2.2491, 2.1717, 2.2782, 2.2681, 2.3285, 2.374, 2.3856, 2.3608, 2.4496, 2.3806, 2.3819, 2.4347, 2.4911, 2.5484, 2.3849, 2.4907, 2.4327, 2.4076, 2.2906, 2.3368, 2.2517, 2.2581, 2.187, 2.155, 2.0993, 2.0771, 2.1258, 2.1262, 2.1156, 2.2002, 2.2034, 2.1852, 2.2304, 2.1966, 2.1093, 2.1163, 2.1645, 2.168, 2.2048, 2.2406, 2.312, 2.3907, 2.317, 2.4437, 2.4348, 2.4294, 2.4668, 2.4714, 2.6058, 2.5626, 2.5583, 2.4971, 2.4963, 2.562, 2.5843, 2.6034, 2.6155, 2.5569, 2.399, 2.4133, 2.4574, 2.479, 2.4992, 2.5629, 2.537, 2.5209, 2.5459, 2.6477, 2.6906, 2.638, 2.6421, 2.6549, 2.7192], "inverse_vol": [1.0, 1.0, 1.0, 1.0, 1.0161, 1.0067, 0.9772, 0.9663, 0.969, 0.8888, 0.802, 0.8238, 0.9017, 0.8489, 0.7882, 0.8551, 0.8797, 0.9057, 0.8867, 0.948, 0.947, 0.9713, 0.9815, 1.025, 1.029, 1.007, 1.0321, 1.0508, 1.0535, 1.033, 1.0452, 1.0905, 1.1012, 1.138, 1.1694, 1.1631, 1.1873, 1.1924, 1.2124, 1.2231, 1.2467, 1.2439, 1.2471, 1.2534, 1.2569, 1.1998, 1.266, 1.2505, 1.2725, 1.3192, 1.3316, 1.3307, 1.3344, 1.2972, 1.3489, 1.3573, 1.3795, 1.3959, 1.379, 1.3907, 1.4004, 1.4073, 1.4066, 1.4199, 1.4373, 1.3918, 1.3545, 1.3802, 1.3653, 1.3994, 1.4237, 1.4119, 1.4198, 1.4186, 1.4611, 1.4604, 1.4769, 1.4966, 1.5084, 1.4928, 1.5137, 1.4769, 1.4848, 1.4903, 1.4784, 1.523, 1.4946, 1.5273, 1.5038, 1.4823, 1.4667, 1.46, 1.4161, 1.4352, 1.4487, 1.429, 1.3955, 1.3774, 1.4256, 1.4562, 1.4719, 1.503, 1.5258, 1.5433, 1.5646, 1.5403, 1.5076, 1.4959, 1.533, 1.5439, 1.5435, 1.5709, 1.5784, 1.611, 1.5925, 1.6297, 1.642, 1.6543, 1.666, 1.6666, 1.7003, 1.6713, 1.6668, 1.6682, 1.6669, 1.6847, 1.6845, 1.6829, 1.6807, 1.6598, 1.6306, 1.6381, 1.6533, 1.6979, 1.7151, 1.7529, 1.7403, 1.7679, 1.8165, 1.8114, 1.8335, 1.8121, 1.8497, 1.8593, 1.8932]}}, "val": {"dates": ["2020-01-03", "2020-01-10", "2020-01-17", "2020-01-27", "2020-02-03", "2020-02-10", "2020-02-18", "2020-02-25", "2020-03-03", "2020-03-10", "2020-03-17", "2020-03-24", "2020-03-31", "2020-04-07", "2020-04-15", "2020-04-22", "2020-04-29", "2020-05-06", "2020-05-13", "2020-05-20", "2020-05-28", "2020-06-04", "2020-06-11", "2020-06-18", "2020-06-25", "2020-07-02", "2020-07-10", "2020-07-17", "2020-07-24", "2020-07-31", "2020-08-07", "2020-08-14", "2020-08-21", "2020-08-28", "2020-09-04", "2020-09-14", "2020-09-21", "2020-09-28", "2020-10-05", "2020-10-12", "2020-10-19", "2020-10-26", "2020-11-02", "2020-11-09", "2020-11-16", "2020-11-23", "2020-12-01", "2020-12-08", "2020-12-15", "2020-12-22", "2020-12-30", "2021-01-07", "2021-01-14", "2021-01-22", "2021-01-29", "2021-02-05", "2021-02-12", "2021-02-22", "2021-03-01", "2021-03-08", "2021-03-15", "2021-03-22", "2021-03-29", "2021-04-06", "2021-04-13", "2021-04-20", "2021-04-27", "2021-05-04", "2021-05-11", "2021-05-18", "2021-05-25", "2021-06-02", "2021-06-09", "2021-06-16", "2021-06-23", "2021-06-30", "2021-07-08", "2021-07-15", "2021-07-22", "2021-07-29", "2021-08-05", "2021-08-12", "2021-08-19", "2021-08-26", "2021-09-02", "2021-09-10", "2021-09-17", "2021-09-24", "2021-10-01", "2021-10-08", "2021-10-15", "2021-10-22", "2021-10-29", "2021-11-05", "2021-11-12", "2021-11-19", "2021-11-29", "2021-12-06", "2021-12-13", "2021-12-20", "2021-12-28", "2022-01-04", "2022-01-11", "2022-01-19", "2022-01-26", "2022-02-02", "2022-02-09", "2022-02-16", "2022-02-24", "2022-03-03", "2022-03-10", "2022-03-17", "2022-03-24", "2022-03-31", "2022-04-07", "2022-04-14", "2022-04-22", "2022-04-29", "2022-05-06", "2022-05-13", "2022-05-20", "2022-05-27", "2022-06-06", "2022-06-13", "2022-06-21", "2022-06-28", "2022-07-06", "2022-07-13", "2022-07-20", "2022-07-27", "2022-08-03", "2022-08-10", "2022-08-17", "2022-08-24", "2022-08-31", "2022-09-08", "2022-09-15", "2022-09-22", "2022-09-29", "2022-10-06", "2022-10-13", "2022-10-20", "2022-10-27", "2022-11-03", "2022-11-10", "2022-11-17", "2022-11-25", "2022-12-02", "2022-12-09", "2022-12-16", "2022-12-23", "2022-12-30"], "curves": {"spy": [0.9904, 1.0006, 1.0197, 0.9938, 0.9957, 1.0281, 1.0344, 0.9604, 0.9223, 0.886, 0.7766, 0.7513, 0.7965, 0.8193, 0.8583, 0.8624, 0.906, 0.8783, 0.8701, 0.9175, 0.9362, 0.9621, 0.9289, 0.9634, 0.9539, 0.969, 0.9857, 0.9985, 0.9959, 1.0134, 1.0384, 1.0454, 1.0536, 1.0881, 1.0632, 1.0504, 1.0189, 1.0413, 1.0587, 1.0982, 1.0657, 1.0576, 1.0289, 1.1048, 1.1298, 1.1139, 1.1405, 1.1535, 1.1517, 1.1492, 1.1641, 1.1863, 1.1843, 1.1982, 1.1581, 1.2133, 1.2287, 1.2111, 1.2191, 1.1945, 1.2405, 1.2326, 1.2426, 1.275, 1.2962, 1.294, 1.3108, 1.3049, 1.3004, 1.2933, 1.3131, 1.3197, 1.3238, 1.3252, 1.3311, 1.3483, 1.3573, 1.3694, 1.3716, 1.388, 1.3915, 1.402, 1.3855, 1.4056, 1.4275, 1.4031, 1.3948, 1.4027, 1.3722, 1.3836, 1.4089, 1.4318, 1.4512, 1.4805, 1.4765, 1.4817, 1.4681, 1.4497, 1.4743, 1.4428, 1.5122, 1.5143, 1.4896, 1.4325, 1.3743, 1.4503, 1.4509, 1.4162, 1.3582, 1.3817, 1.3492, 1.3986, 1.433, 1.4366, 1.4275, 1.3926, 1.3552, 1.3105, 1.3084, 1.2778, 1.2394, 1.3209, 1.3099, 1.1928, 1.1982, 1.216, 1.2243, 1.2102, 1.2611, 1.2812, 1.324, 1.3417, 1.363, 1.3215, 1.2625, 1.2791, 1.2463, 1.2004, 1.1637, 1.1971, 1.1739, 1.1721, 1.2189, 1.1901, 1.2661, 1.2646, 1.2906, 1.3053, 1.2615, 1.2351, 1.2339, 1.2324], "equal_weight": [0.9984, 1.0008, 1.0101, 0.9959, 0.9941, 1.0089, 1.0183, 0.9878, 0.9756, 0.9448, 0.839, 0.8367, 0.872, 0.8834, 0.9141, 0.9109, 0.9395, 0.9143, 0.9128, 0.9479, 0.9587, 0.9812, 0.9661, 0.9885, 0.987, 1.0007, 1.0129, 1.0197, 1.027, 1.0402, 1.0579, 1.0494, 1.0547, 1.0671, 1.0524, 1.052, 1.0342, 1.0406, 1.0533, 1.0748, 1.0571, 1.0516, 1.0374, 1.0784, 1.0983, 1.0985, 1.1083, 1.1221, 1.1279, 1.1273, 1.1401, 1.1491, 1.1555, 1.1619, 1.1418, 1.1707, 1.1852, 1.1705, 1.1617, 1.1357, 1.1679, 1.1577, 1.1513, 1.1738, 1.1798, 1.1844, 1.1978, 1.193, 1.193, 1.1923, 1.206, 1.2231, 1.2309, 1.2231, 1.2235, 1.2306, 1.2308, 1.2376, 1.2377, 1.246, 1.247, 1.2381, 1.225, 1.2391, 1.2637, 1.2491, 1.2443, 1.2422, 1.2324, 1.2304, 1.2526, 1.2591, 1.2642, 1.2846, 1.2826, 1.2758, 1.2528, 1.2516, 1.2589, 1.2446, 1.2775, 1.2745, 1.2638, 1.2402, 1.2117, 1.2412, 1.2415, 1.2281, 1.2079, 1.2245, 1.2039, 1.2197, 1.232, 1.2334, 1.2175, 1.2066, 1.1818, 1.1606, 1.1427, 1.1306, 1.128, 1.1699, 1.1589, 1.0898, 1.0919, 1.1021, 1.09, 1.0901, 1.11, 1.1298, 1.1477, 1.1603, 1.1574, 1.1348, 1.1043, 1.0974, 1.0811, 1.0515, 1.0223, 1.0461, 1.0243, 1.0107, 1.0407, 1.0261, 1.0803, 1.083, 1.0941, 1.1163, 1.0941, 1.0859, 1.0784, 1.0739], "60_40": [0.9961, 1.0014, 1.0131, 1.0044, 1.0083, 1.0269, 1.0307, 0.9932, 0.9801, 0.9626, 0.8857, 0.8758, 0.9139, 0.928, 0.9584, 0.9617, 0.9906, 0.9702, 0.9669, 0.9973, 1.0094, 1.0227, 1.0061, 1.0274, 1.0218, 1.0322, 1.0434, 1.0521, 1.0515, 1.0641, 1.0793, 1.0798, 1.0873, 1.106, 1.0914, 1.0852, 1.0656, 1.0802, 1.0872, 1.1123, 1.0922, 1.0859, 1.0669, 1.1119, 1.128, 1.1198, 1.134, 1.1423, 1.1418, 1.1403, 1.1491, 1.1573, 1.1544, 1.1642, 1.141, 1.1705, 1.1793, 1.1634, 1.1652, 1.1446, 1.1712, 1.1642, 1.169, 1.1893, 1.2029, 1.2038, 1.2107, 1.2091, 1.2058, 1.2017, 1.2157, 1.2183, 1.2246, 1.2216, 1.2277, 1.2387, 1.2505, 1.257, 1.2601, 1.269, 1.2727, 1.2735, 1.2692, 1.2766, 1.291, 1.2757, 1.2697, 1.2706, 1.2539, 1.2551, 1.2696, 1.2793, 1.2927, 1.3136, 1.3065, 1.3103, 1.3044, 1.2981, 1.312, 1.2957, 1.3304, 1.3248, 1.3077, 1.2729, 1.2414, 1.2861, 1.2794, 1.2576, 1.2297, 1.2474, 1.2241, 1.2426, 1.2537, 1.2572, 1.2398, 1.2157, 1.1929, 1.1696, 1.161, 1.1522, 1.1366, 1.1837, 1.1664, 1.0905, 1.0971, 1.1118, 1.1262, 1.1194, 1.1427, 1.1636, 1.1899, 1.1966, 1.2046, 1.1745, 1.1406, 1.1446, 1.122, 1.0887, 1.0666, 1.0832, 1.067, 1.0577, 1.094, 1.0716, 1.1241, 1.1248, 1.1416, 1.1577, 1.1306, 1.1207, 1.1115, 1.1063], "momentum": [0.9862, 1.0, 1.0207, 0.9836, 0.9818, 1.0062, 1.0131, 0.9611, 0.9789, 0.9958, 0.9487, 0.9968, 0.9939, 1.0132, 1.033, 1.0361, 1.0342, 1.016, 1.0278, 1.0307, 1.0187, 1.017, 0.9803, 1.0214, 1.0198, 1.0384, 1.0515, 1.0549, 1.0515, 1.0743, 1.0931, 1.0981, 1.1056, 1.1346, 1.1077, 1.104, 1.0807, 1.0883, 1.1098, 1.1535, 1.1201, 1.1109, 1.0767, 1.114, 1.1387, 1.1387, 1.1548, 1.1823, 1.1903, 1.1871, 1.2104, 1.2553, 1.284, 1.284, 1.2301, 1.2965, 1.3318, 1.3251, 1.3171, 1.2942, 1.3501, 1.309, 1.2967, 1.3226, 1.328, 1.3502, 1.3728, 1.3839, 1.3875, 1.3789, 1.3895, 1.4276, 1.436, 1.4122, 1.4042, 1.4164, 1.4209, 1.4354, 1.439, 1.4495, 1.4634, 1.4446, 1.4355, 1.4344, 1.4744, 1.448, 1.4416, 1.4457, 1.4069, 1.4115, 1.4396, 1.4506, 1.4542, 1.4801, 1.4742, 1.4607, 1.4205, 1.3813, 1.3829, 1.351, 1.4162, 1.4131, 1.3747, 1.3299, 1.299, 1.3042, 1.3163, 1.32, 1.334, 1.3821, 1.3894, 1.3765, 1.4086, 1.3865, 1.3915, 1.431, 1.3958, 1.3688, 1.3647, 1.3459, 1.3447, 1.3613, 1.3781, 1.3502, 1.3305, 1.3212, 1.2728, 1.2728, 1.2728, 1.2728, 1.285, 1.2994, 1.3103, 1.2676, 1.2135, 1.2135, 1.1939, 1.1368, 1.1216, 1.1398, 1.1443, 1.1308, 1.1308, 1.1298, 1.125, 1.1215, 1.1207, 1.1263, 1.1034, 1.0978, 1.0947, 1.0994], "inverse_vol": [0.9984, 1.0002, 1.0076, 0.9979, 0.9978, 1.0083, 1.0155, 1.0009, 0.9989, 0.9738, 0.8929, 0.9027, 0.9319, 0.9431, 0.9701, 0.9616, 0.9755, 0.9579, 0.9603, 0.9844, 0.9893, 1.0004, 0.9946, 1.0104, 1.0102, 1.0205, 1.0303, 1.0355, 1.0449, 1.054, 1.0633, 1.0509, 1.0571, 1.0624, 1.053, 1.0541, 1.0432, 1.0444, 1.0471, 1.0599, 1.0497, 1.0446, 1.0356, 1.0599, 1.0732, 1.0757, 1.0809, 1.0892, 1.0935, 1.0932, 1.1024, 1.1028, 1.1048, 1.1088, 1.0978, 1.1116, 1.119, 1.1062, 1.1013, 1.0809, 1.103, 1.0957, 1.0936, 1.1096, 1.1144, 1.1174, 1.1239, 1.1227, 1.1221, 1.121, 1.1322, 1.1402, 1.1471, 1.1409, 1.1419, 1.1484, 1.1509, 1.1546, 1.1557, 1.1609, 1.1616, 1.1519, 1.1466, 1.1549, 1.1727, 1.1627, 1.1599, 1.157, 1.1494, 1.1441, 1.1591, 1.1609, 1.1652, 1.1814, 1.1768, 1.1724, 1.1558, 1.1564, 1.1625, 1.1535, 1.1737, 1.1675, 1.1596, 1.1437, 1.125, 1.1441, 1.1398, 1.1287, 1.121, 1.1364, 1.1189, 1.1284, 1.1314, 1.1353, 1.1186, 1.1061, 1.087, 1.0705, 1.0538, 1.0465, 1.0494, 1.0803, 1.0658, 1.0134, 1.0161, 1.0234, 1.0134, 1.0148, 1.0259, 1.0453, 1.0619, 1.0713, 1.0673, 1.0471, 1.0221, 1.0154, 1.0008, 0.9775, 0.9534, 0.9738, 0.9544, 0.9414, 0.9681, 0.9552, 0.9998, 1.0034, 1.0128, 1.0331, 1.0164, 1.0118, 1.0046, 0.9996]}}, "test": {"dates": ["2023-01-04", "2023-01-11", "2023-01-19", "2023-01-26", "2023-02-02", "2023-02-09", "2023-02-16", "2023-02-24", "2023-03-03", "2023-03-10", "2023-03-17", "2023-03-24", "2023-03-31", "2023-04-10", "2023-04-17", "2023-04-24", "2023-05-01", "2023-05-08", "2023-05-15", "2023-05-22", "2023-05-30", "2023-06-06", "2023-06-13", "2023-06-21", "2023-06-28", "2023-07-06", "2023-07-13", "2023-07-20", "2023-07-27", "2023-08-03", "2023-08-10", "2023-08-17", "2023-08-24", "2023-08-31", "2023-09-08", "2023-09-15", "2023-09-22", "2023-09-29", "2023-10-06", "2023-10-13", "2023-10-20", "2023-10-27", "2023-11-03", "2023-11-10", "2023-11-17", "2023-11-27", "2023-12-04", "2023-12-11", "2023-12-18", "2023-12-26", "2024-01-03", "2024-01-10", "2024-01-18", "2024-01-25", "2024-02-01", "2024-02-08", "2024-02-15", "2024-02-23", "2024-03-01", "2024-03-08", "2024-03-15", "2024-03-22", "2024-04-01", "2024-04-08", "2024-04-15", "2024-04-22", "2024-04-29", "2024-05-06", "2024-05-13", "2024-05-20", "2024-05-28", "2024-06-04", "2024-06-11", "2024-06-18", "2024-06-26", "2024-07-03", "2024-07-11", "2024-07-18", "2024-07-25", "2024-08-01", "2024-08-08", "2024-08-15", "2024-08-22", "2024-08-29", "2024-09-06", "2024-09-13", "2024-09-20", "2024-09-27", "2024-10-04", "2024-10-11", "2024-10-18", "2024-10-25", "2024-11-01", "2024-11-08", "2024-11-15", "2024-11-22", "2024-12-02", "2024-12-09", "2024-12-16", "2024-12-23", "2024-12-31", "2025-01-08", "2025-01-16", "2025-01-24", "2025-01-31", "2025-02-07", "2025-02-14", "2025-02-24", "2025-03-03", "2025-03-10", "2025-03-17", "2025-03-24", "2025-03-31", "2025-04-07", "2025-04-14", "2025-04-22", "2025-04-29", "2025-05-06", "2025-05-13", "2025-05-20", "2025-05-28", "2025-06-04", "2025-06-11", "2025-06-18", "2025-06-26", "2025-07-03", "2025-07-11", "2025-07-18", "2025-07-25", "2025-08-01", "2025-08-08", "2025-08-15", "2025-08-22", "2025-08-29", "2025-09-08", "2025-09-15", "2025-09-22", "2025-09-29", "2025-10-06", "2025-10-13", "2025-10-20", "2025-10-27", "2025-11-03", "2025-11-10", "2025-11-17", "2025-11-24", "2025-12-02", "2025-12-09", "2025-12-16", "2025-12-23", "2025-12-31", "2026-01-08", "2026-01-15", "2026-01-23", "2026-01-30", "2026-02-06", "2026-02-13", "2026-02-23", "2026-03-02", "2026-03-09", "2026-03-16", "2026-03-23", "2026-03-30", "2026-04-07", "2026-04-14", "2026-04-21", "2026-04-28", "2026-05-05", "2026-05-12", "2026-05-19", "2026-05-27", "2026-06-03", "2026-06-10", "2026-06-17", "2026-06-25", "2026-07-01"], "curves": {"spy": [1.0057, 1.0365, 1.0185, 1.0607, 1.0923, 1.0669, 1.07, 1.0388, 1.0593, 1.0114, 1.0259, 1.0411, 1.077, 1.0776, 1.089, 1.0855, 1.0931, 1.0858, 1.0865, 1.1017, 1.1054, 1.126, 1.1487, 1.1484, 1.1523, 1.1609, 1.1871, 1.194, 1.1948, 1.1852, 1.1774, 1.152, 1.1536, 1.1891, 1.1764, 1.1748, 1.1405, 1.1327, 1.1382, 1.1434, 1.1161, 1.0882, 1.1518, 1.1675, 1.1945, 1.2043, 1.2101, 1.2242, 1.2557, 1.2655, 1.2472, 1.2679, 1.2677, 1.2984, 1.3015, 1.3258, 1.3356, 1.3512, 1.3645, 1.3614, 1.3606, 1.391, 1.3935, 1.3844, 1.3463, 1.3337, 1.3612, 1.3786, 1.3902, 1.4146, 1.414, 1.4102, 1.433, 1.4638, 1.4606, 1.4765, 1.4899, 1.4797, 1.4415, 1.4539, 1.4208, 1.4808, 1.4892, 1.4949, 1.4468, 1.5047, 1.5261, 1.5348, 1.5388, 1.5565, 1.57, 1.5551, 1.5336, 1.6065, 1.5731, 1.5993, 1.6211, 1.6239, 1.6296, 1.6025, 1.5793, 1.5885, 1.5943, 1.6383, 1.6217, 1.6189, 1.6429, 1.6093, 1.5731, 1.5106, 1.5283, 1.5516, 1.5119, 1.3632, 1.4571, 1.425, 1.4982, 1.5103, 1.5861, 1.6023, 1.5885, 1.6107, 1.6253, 1.6147, 1.6586, 1.6951, 1.6905, 1.7012, 1.727, 1.6853, 1.7272, 1.7442, 1.7493, 1.7486, 1.7588, 1.7916, 1.8127, 1.8041, 1.8256, 1.8023, 1.8248, 1.8627, 1.8575, 1.8523, 1.8095, 1.8178, 1.8526, 1.8567, 1.8454, 1.8756, 1.8591, 1.8798, 1.8873, 1.879, 1.8865, 1.8828, 1.8587, 1.8604, 1.8713, 1.8492, 1.824, 1.7916, 1.7276, 1.8021, 1.8985, 1.9248, 1.9456, 1.9786, 2.018, 2.0058, 2.0516, 2.0619, 1.9831, 2.0256, 2.0126, 2.044], "equal_weight": [1.0082, 1.0377, 1.0449, 1.0635, 1.0798, 1.0502, 1.0434, 1.0208, 1.0405, 1.0156, 1.0214, 1.0315, 1.0544, 1.0557, 1.0582, 1.0554, 1.051, 1.0535, 1.0519, 1.0496, 1.0455, 1.0632, 1.0699, 1.0732, 1.0681, 1.0609, 1.0982, 1.0952, 1.0913, 1.0787, 1.0763, 1.0498, 1.0565, 1.0778, 1.0666, 1.0682, 1.0471, 1.0336, 1.0201, 1.0335, 1.0129, 1.0074, 1.0492, 1.0419, 1.068, 1.0755, 1.089, 1.0904, 1.1228, 1.1369, 1.1208, 1.1201, 1.1092, 1.125, 1.1331, 1.1281, 1.1325, 1.1363, 1.1502, 1.1606, 1.1497, 1.1611, 1.1657, 1.168, 1.1423, 1.135, 1.1508, 1.1635, 1.1693, 1.1886, 1.1761, 1.1739, 1.1765, 1.193, 1.1845, 1.1981, 1.2174, 1.2163, 1.1968, 1.2108, 1.1969, 1.2238, 1.2303, 1.2404, 1.2194, 1.2506, 1.2613, 1.273, 1.2681, 1.2666, 1.2702, 1.2577, 1.2439, 1.2713, 1.2381, 1.2607, 1.2722, 1.277, 1.266, 1.2377, 1.2356, 1.2367, 1.2501, 1.2681, 1.2652, 1.2737, 1.2881, 1.2821, 1.2736, 1.2543, 1.2719, 1.2749, 1.2648, 1.1826, 1.2281, 1.2357, 1.2679, 1.275, 1.2915, 1.2989, 1.292, 1.3097, 1.3197, 1.3209, 1.3336, 1.3478, 1.3426, 1.3462, 1.3571, 1.3412, 1.357, 1.3634, 1.3779, 1.3767, 1.3989, 1.4155, 1.4188, 1.4217, 1.4358, 1.431, 1.4583, 1.4606, 1.4478, 1.4518, 1.4283, 1.4363, 1.4525, 1.4531, 1.4509, 1.4708, 1.4593, 1.4845, 1.5038, 1.5193, 1.5159, 1.5255, 1.5359, 1.5468, 1.5575, 1.5375, 1.5242, 1.4883, 1.4729, 1.5168, 1.5682, 1.5702, 1.5772, 1.5956, 1.6127, 1.5849, 1.6147, 1.6196, 1.5755, 1.6004, 1.5978, 1.5905], "60_40": [1.0057, 1.0298, 1.024, 1.0466, 1.0682, 1.0437, 1.0401, 1.0183, 1.0305, 1.0116, 1.0283, 1.04, 1.0582, 1.061, 1.0626, 1.0639, 1.0662, 1.0652, 1.0663, 1.0676, 1.0708, 1.0822, 1.0911, 1.0947, 1.0975, 1.0914, 1.1167, 1.1176, 1.1132, 1.103, 1.1014, 1.0811, 1.0838, 1.1088, 1.0967, 1.0939, 1.0717, 1.0634, 1.0605, 1.0689, 1.0453, 1.0326, 1.077, 1.0836, 1.1051, 1.1127, 1.1204, 1.1296, 1.1572, 1.1649, 1.1548, 1.1624, 1.1597, 1.1776, 1.1888, 1.1915, 1.1943, 1.2021, 1.2123, 1.2149, 1.2064, 1.227, 1.2247, 1.2167, 1.1902, 1.1838, 1.1991, 1.2132, 1.2197, 1.2345, 1.2309, 1.2372, 1.2471, 1.2702, 1.2652, 1.2734, 1.2864, 1.2818, 1.2603, 1.277, 1.2606, 1.2957, 1.3026, 1.306, 1.2872, 1.3207, 1.3295, 1.3339, 1.3271, 1.3329, 1.3403, 1.3268, 1.3106, 1.351, 1.3291, 1.344, 1.364, 1.3658, 1.3616, 1.3409, 1.3307, 1.3327, 1.3378, 1.3605, 1.3555, 1.3565, 1.3696, 1.3562, 1.3479, 1.3138, 1.3202, 1.3319, 1.3162, 1.2406, 1.2861, 1.2693, 1.3176, 1.3195, 1.3528, 1.3618, 1.3553, 1.3722, 1.3779, 1.3743, 1.4031, 1.4182, 1.4132, 1.4191, 1.434, 1.4207, 1.4399, 1.4475, 1.4533, 1.4553, 1.468, 1.4847, 1.4911, 1.487, 1.4971, 1.491, 1.5055, 1.5241, 1.5173, 1.5152, 1.494, 1.5031, 1.5187, 1.5167, 1.5137, 1.5277, 1.52, 1.5303, 1.5347, 1.5284, 1.532, 1.5332, 1.5285, 1.5309, 1.536, 1.5228, 1.5057, 1.4844, 1.453, 1.4923, 1.5433, 1.5538, 1.5628, 1.576, 1.5934, 1.5795, 1.6093, 1.6141, 1.5749, 1.5973, 1.5964, 1.6062], "momentum": [1.0156, 1.0423, 1.0614, 1.0793, 1.0704, 1.0396, 1.0318, 0.9931, 1.0215, 1.0008, 1.0319, 1.0467, 1.0708, 1.0729, 1.0807, 1.0782, 1.0845, 1.0903, 1.0919, 1.0961, 1.0989, 1.1114, 1.1302, 1.1235, 1.124, 1.1268, 1.169, 1.1722, 1.17, 1.1652, 1.1496, 1.1167, 1.1239, 1.1584, 1.1513, 1.1561, 1.1293, 1.1112, 1.0914, 1.1054, 1.11, 1.1133, 1.1087, 1.0925, 1.1107, 1.1229, 1.1238, 1.1264, 1.1549, 1.1795, 1.1475, 1.1408, 1.1121, 1.1283, 1.1244, 1.1268, 1.1469, 1.1447, 1.1676, 1.1627, 1.147, 1.1697, 1.1734, 1.1834, 1.1782, 1.1599, 1.1781, 1.1809, 1.1835, 1.2152, 1.1978, 1.1623, 1.1678, 1.1929, 1.1834, 1.2071, 1.2196, 1.1898, 1.1727, 1.1812, 1.126, 1.1383, 1.1432, 1.1477, 1.1441, 1.1755, 1.1684, 1.1669, 1.1646, 1.1619, 1.1755, 1.1678, 1.1568, 1.1942, 1.1562, 1.1907, 1.1979, 1.1975, 1.2053, 1.1666, 1.1522, 1.1593, 1.1606, 1.1786, 1.1639, 1.1602, 1.1683, 1.1772, 1.1615, 1.1596, 1.191, 1.1884, 1.2, 1.1027, 1.1192, 1.1497, 1.1621, 1.1733, 1.1616, 1.1787, 1.1747, 1.1899, 1.1904, 1.184, 1.2023, 1.2161, 1.2054, 1.2185, 1.2317, 1.1954, 1.2281, 1.2349, 1.2462, 1.2454, 1.2595, 1.2785, 1.3018, 1.298, 1.3324, 1.3235, 1.3757, 1.344, 1.3368, 1.3447, 1.3105, 1.3069, 1.3184, 1.3226, 1.3126, 1.3423, 1.3128, 1.3556, 1.3799, 1.4446, 1.4374, 1.4527, 1.4766, 1.5018, 1.5273, 1.5126, 1.5209, 1.4397, 1.455, 1.4974, 1.5216, 1.5345, 1.5515, 1.605, 1.6379, 1.6204, 1.6158, 1.6357, 1.5293, 1.5993, 1.6073, 1.6029], "inverse_vol": [1.0084, 1.0356, 1.0441, 1.0591, 1.0722, 1.0442, 1.0356, 1.0162, 1.0338, 1.0162, 1.0229, 1.0328, 1.0527, 1.0543, 1.0554, 1.0531, 1.0479, 1.0504, 1.0491, 1.0467, 1.0425, 1.0569, 1.0601, 1.0644, 1.0618, 1.0514, 1.0851, 1.0821, 1.0768, 1.0649, 1.0643, 1.0402, 1.0466, 1.0663, 1.0568, 1.0587, 1.0423, 1.0283, 1.0146, 1.0275, 1.0096, 1.0058, 1.0446, 1.038, 1.061, 1.0686, 1.0795, 1.0816, 1.1104, 1.1226, 1.1087, 1.1092, 1.1002, 1.1133, 1.1226, 1.1152, 1.1167, 1.1215, 1.1329, 1.1444, 1.135, 1.1449, 1.1467, 1.148, 1.1255, 1.1209, 1.1344, 1.1463, 1.1498, 1.165, 1.1539, 1.1558, 1.158, 1.1732, 1.166, 1.1768, 1.1936, 1.1926, 1.1779, 1.1926, 1.1854, 1.2053, 1.2116, 1.2192, 1.211, 1.2327, 1.2393, 1.246, 1.237, 1.2342, 1.2389, 1.2269, 1.2156, 1.2366, 1.2117, 1.2263, 1.2392, 1.2428, 1.2328, 1.2092, 1.2091, 1.2093, 1.2216, 1.2352, 1.2345, 1.2416, 1.2528, 1.2507, 1.2494, 1.2351, 1.2445, 1.2461, 1.2446, 1.1854, 1.2065, 1.2145, 1.2406, 1.2401, 1.2445, 1.2494, 1.2448, 1.26, 1.2668, 1.2681, 1.2817, 1.2912, 1.2849, 1.2879, 1.2969, 1.2879, 1.2993, 1.3037, 1.3141, 1.313, 1.3325, 1.3454, 1.3462, 1.3478, 1.3571, 1.3503, 1.3688, 1.3734, 1.358, 1.3614, 1.3474, 1.3545, 1.3628, 1.3598, 1.3594, 1.3711, 1.3654, 1.3793, 1.3904, 1.3941, 1.3923, 1.3972, 1.4057, 1.4091, 1.4097, 1.3995, 1.3843, 1.3646, 1.3528, 1.3834, 1.4168, 1.4172, 1.4204, 1.4266, 1.4337, 1.4134, 1.437, 1.4386, 1.4159, 1.4308, 1.4349, 1.4258]}}}, "spy5d": {"edges": [-0.12, -0.115, -0.11, -0.105, -0.1, -0.095, -0.09, -0.085, -0.08, -0.075, -0.07, -0.065, -0.06, -0.055, -0.05, -0.045, -0.04, -0.035, -0.03, -0.025, -0.02, -0.015, -0.01, -0.005, 0.0, 0.005, 0.01, 0.015, 0.02, 0.025, 0.03, 0.035, 0.04, 0.045, 0.05, 0.055, 0.06, 0.065, 0.07, 0.075, 0.08, 0.085, 0.09, 0.095, 0.1, 0.105, 0.11, 0.115, 0.12], "counts": [0, 1, 3, 1, 2, 2, 2, 2, 5, 9, 11, 5, 13, 16, 22, 36, 43, 51, 77, 89, 110, 177, 193, 326, 387, 396, 313, 233, 159, 105, 59, 51, 24, 24, 16, 16, 5, 5, 6, 2, 1, 1, 2, 1, 2, 1, 2, 0], "mean": 0.00207, "std": 0.02451}, "grpo_demo": {"date": "2008-10-02", "fwd_returns": {"SPY": -0.189093, "QQQ": -0.142313, "IWM": -0.213747, "EFA": -0.176646, "EEM": -0.230745, "TLT": 0.000829, "IEF": -0.011807, "LQD": -0.027446, "HYG": -0.11653, "GLD": 0.091947, "DBC": -0.084426, "VNQ": -0.22955}, "rows": [{"name": "All SPY", "portfolio_return": -0.18909, "reward": -4.192, "advantage": -1.641}, {"name": "All QQQ", "portfolio_return": -0.14231, "reward": -3.0703, "advantage": -0.939}, {"name": "Equal weight", "portfolio_return": -0.11079, "reward": -2.3485, "advantage": -0.487}, {"name": "60/40", "portfolio_return": -0.11818, "reward": -2.5153, "advantage": -0.592}, {"name": "Risk-off", "portfolio_return": 0.028, "reward": 0.5523, "advantage": 1.328}, {"name": "All TLT", "portfolio_return": 0.00083, "reward": 0.0166, "advantage": 0.992}, {"name": "All CASH", "portfolio_return": 0, "reward": 0.0, "advantage": 0.982}, {"name": "Malformed output", "portfolio_return": null, "reward": -1.0, "advantage": 0.356}]}, "sample_prompt": {"date": "2010-04-08", "prompt": "You are a systematic portfolio manager. Based on the market state below, allocate a long-only portfolio for the coming week across the listed ETFs and CASH (CASH earns 0%).\n\nRules:\n- Weights must be between 0 and 1 and sum to 1.0.\n- You may concentrate or diversify as you see fit.\n- Think briefly (under 80 words), then output ONE JSON object mapping tickers to weights on the final line.\n\nExample final line: {\"SPY\": 0.4, \"TLT\": 0.3, \"GLD\": 0.2, \"CASH\": 0.1}\n\nDate: 2010-04-08 (month: April)\n\nMarket state (returns/vol in %, distance from 52-week high in %):\nTicker Asset                        1d     1w     1m     3m    Vol  vs52wH\nSPY    US large-cap equity         0.3    1.5    4.2    4.9    7.1    -0.2\nQQQ    US tech equity              0.2    1.2    4.3    5.7    7.2    -0.0\nIWM    US small-cap equity        -0.1    3.0    4.5    9.9   13.3    -0.4\nEFA    Intl developed equity      -0.1    0.8    2.8   -1.1   12.7    -2.7\nEEM    Emerging mkt equity         0.3    3.3    5.6    0.9   15.9    -0.5\nTLT    20y+ US Treasuries          0.0   -0.4   -0.8    0.6   11.7   -11.1\nIEF    7-10y US Treasuries        -0.1   -0.3   -1.1    1.0    6.2    -3.6\nLQD    IG corporate bonds         -0.2   -0.2   -0.0    1.5    5.6    -1.1\nHYG    High-yield bonds            0.2    0.7    0.8    1.3    4.1     0.0\nGLD    Gold                        0.1    3.4    2.7    1.0   16.4    -5.5\nDBC    Commodities                -0.2    2.9    2.4   -5.9   15.6    -5.9\nVNQ    US REITs                    0.1    2.9    7.7   13.9   18.7    -2.1\n\nYour allocation:", "fwd_returns": {"SPY": 0.021218, "QQQ": 0.028519, "IWM": 0.037233, "EFA": 0.028186, "EEM": 0.005287, "TLT": 0.004957, "IEF": 0.004721, "LQD": 0.007989, "HYG": 0.009852, "GLD": 0.008877, "DBC": 0.02024, "VNQ": 0.005775}}};
+
+/* ---------- tiny SVG helpers ---------- */
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function svgIn(container, w, h) {
+  container.innerHTML = "";
+  const s = el("svg", { viewBox: `0 0 ${w} ${h}`, width: "100%" });
+  container.appendChild(s);
+  return s;
+}
+const COLORS = { spy: "#5eb0ff", equal_weight: "#c084fc", "60_40": "#4ade80",
+                 momentum: "#fbbf24", inverse_vol: "#f87171" };
+const NAMES = { spy: "SPY buy & hold", equal_weight: "Equal weight", "60_40": "60/40",
+                momentum: "Momentum", inverse_vol: "Inverse vol" };
+
+/* ---------- Fig 2: PPO clipping interactive ---------- */
+function drawPPO() {
+  const eps = parseFloat(document.getElementById("epsSlider").value);
+  document.getElementById("epsVal").textContent = eps.toFixed(2);
+  const W = 820, H = 300, mL = 50, mR = 16, mT = 14, mB = 34;
+  const svg = svgIn(document.getElementById("ppoClip"), W, H);
+  const x = r => mL + (r / 2) * (W - mL - mR);          // ratio 0..2
+  const y = v => mT + (1.6 - v) / 3.2 * (H - mT - mB);  // objective -1.6..1.6
+  // axes + grid
+  for (const gv of [-1, 0, 1]) {
+    el("line", { x1: mL, x2: W - mR, y1: y(gv), y2: y(gv), stroke: gv === 0 ? "#3a4558" : "#232c3b",
+                 "stroke-width": 1 }, svg);
+    const t = el("text", { x: mL - 8, y: y(gv) + 4, fill: "#8b95a7", "font-size": 11, "text-anchor": "end" }, svg);
+    t.textContent = gv;
+  }
+  for (const rv of [0, 0.5, 1, 1.5, 2]) {
+    const t = el("text", { x: x(rv), y: H - 12, fill: "#8b95a7", "font-size": 11, "text-anchor": "middle" }, svg);
+    t.textContent = rv;
+  }
+  const xlab = el("text", { x: (mL + W - mR) / 2, y: H - 0.5, fill: "#8b95a7", "font-size": 11,
+                            "text-anchor": "middle" }, svg);
+  xlab.textContent = "probability ratio ρ = π_new / π_old";
+  // clip boundaries
+  for (const b of [1 - eps, 1 + eps])
+    el("line", { x1: x(b), x2: x(b), y1: mT, y2: H - mB, stroke: "#5eb0ff", "stroke-dasharray": "3 4",
+                 opacity: 0.5 }, svg);
+  // curves for A=+1 and A=-1
+  for (const A of [1, -1]) {
+    let dC = "", dU = "";
+    for (let r = 0; r <= 2.001; r += 0.02) {
+      const clipped = Math.min(r * A, Math.max(Math.min(r, 1 + eps), 1 - eps) * A);
+      dC += (dC ? "L" : "M") + x(r).toFixed(1) + " " + y(clipped).toFixed(1);
+      dU += (dU ? "L" : "M") + x(r).toFixed(1) + " " + y(r * A).toFixed(1);
+    }
+    const c = A > 0 ? "#4ade80" : "#f87171";
+    el("path", { d: dU, fill: "none", stroke: c, "stroke-width": 1, "stroke-dasharray": "4 5", opacity: 0.45 }, svg);
+    el("path", { d: dC, fill: "none", stroke: c, "stroke-width": 2.5 }, svg);
+    const t = el("text", { x: x(1.95), y: y(1.9 * A * 0.68), fill: c, "font-size": 12, "text-anchor": "end" }, svg);
+    t.textContent = A > 0 ? "A = +1 (good action)" : "A = −1 (bad action)";
+  }
+}
+document.getElementById("epsSlider").addEventListener("input", drawPPO);
+drawPPO();
+
+/* ---------- Fig 3: GRPO group demo ---------- */
+let penalty = -1;
+function drawGRPO() {
+  const rows = DATA.grpo_demo.rows.map(r => ({ ...r }));
+  rows.forEach(r => { if (r.name === "Malformed output") r.reward = penalty; });
+  const rs = rows.map(r => r.reward);
+  const mean = rs.reduce((a, b) => a + b) / rs.length;
+  const std = Math.sqrt(rs.reduce((a, b) => a + (b - mean) ** 2, 0) / rs.length);
+  rows.forEach(r => r.advantage = (r.reward - mean) / std);
+
+  const W = 820, rowH = 34, mT = 30, H = mT + rows.length * rowH + 10;
+  const svg = svgIn(document.getElementById("grpoDemo"), W, H);
+  const midL = 415, midR = 555;                       // left bars end / right bars start
+  const rMax = 5.2, aMax = 2.1;
+  const xL = v => midL - 30 - (Math.min(Math.abs(v), rMax) / rMax) * 180;
+  const xR = v => midR + 30 + (Math.min(Math.abs(v), aMax) / aMax) * 180;
+  const hd1 = el("text", { x: midL - 120, y: 16, fill: "#8b95a7", "font-size": 11, "text-anchor": "middle" }, svg);
+  hd1.textContent = "raw reward  (20·log-return)";
+  const hd2 = el("text", { x: midR + 120, y: 16, fill: "#8b95a7", "font-size": 11, "text-anchor": "middle" }, svg);
+  hd2.textContent = "GRPO advantage  (r − mean)/std";
+  rows.forEach((r, i) => {
+    const cy = mT + i * rowH + rowH / 2;
+    const name = el("text", { x: (midL + midR) / 2, y: cy + 4, fill: "#d7dde8", "font-size": 12.5,
+                              "text-anchor": "middle", "font-weight": r.name === "Malformed output" ? 700 : 400 }, svg);
+    name.textContent = r.name;
+    // left: raw reward bar (grows leftward from midL-30)
+    const rw = Math.abs(xL(r.reward) - (midL - 30));
+    el("rect", { x: r.reward < 0 ? midL - 30 - rw : midL - 30 - rw, y: cy - 9, width: rw, height: 18, rx: 3,
+                 fill: r.reward >= 0 ? "#4ade80" : "#f87171", opacity: 0.75 }, svg);
+    const rv = el("text", { x: midL - 34 - rw, y: cy + 4, fill: "#8b95a7", "font-size": 11, "text-anchor": "end" }, svg);
+    rv.textContent = r.reward.toFixed(2) + (r.portfolio_return !== null ? "  (" + (r.portfolio_return * 100).toFixed(1) + "%)" : "");
+    // right: advantage bar
+    const aw = Math.abs(xR(r.advantage) - (midR + 30));
+    el("rect", { x: midR + 30, y: cy - 9, width: aw, height: 18, rx: 3,
+                 fill: r.advantage >= 0 ? "#4ade80" : "#f87171", opacity: 0.75 }, svg);
+    const av = el("text", { x: midR + 36 + aw, y: cy + 4, fill: "#8b95a7", "font-size": 11 }, svg);
+    av.textContent = (r.advantage >= 0 ? "+" : "") + r.advantage.toFixed(2);
+    if (r.name === "Malformed output" && r.advantage > 0)
+      av.textContent += "  ← the bug!";
+  });
+}
+document.getElementById("pen1").addEventListener("click", () => { penalty = -1; setPenBtns("pen1"); drawGRPO(); });
+document.getElementById("pen5").addEventListener("click", () => { penalty = -5; setPenBtns("pen5"); drawGRPO(); });
+function setPenBtns(id) {
+  for (const b of ["pen1", "pen5"]) document.getElementById(b).classList.toggle("active", b === id);
+}
+drawGRPO();
+
+/* ---------- Fig 5: sample prompt ---------- */
+document.getElementById("samplePrompt").textContent = DATA.sample_prompt.prompt;
+
+/* ---------- Fig 7: equity curves + metrics ---------- */
+let curSplit = "train";
+function drawEquity() {
+  const d = DATA.equity[curSplit];
+  const names = Object.keys(d.curves);
+  const W = 820, H = 340, mL = 52, mR = 14, mT = 12, mB = 30;
+  const svg = svgIn(document.getElementById("eqChart"), W, H);
+  const all = names.flatMap(n => d.curves[n]);
+  const lo = Math.min(...all) * 0.97, hi = Math.max(...all) * 1.03;
+  const y = v => mT + (Math.log(hi) - Math.log(v)) / (Math.log(hi) - Math.log(lo)) * (H - mT - mB);
+  const x = i => mL + i / (d.dates.length - 1) * (W - mL - mR);
+  // y grid: nice equity levels
+  const levels = [0.5, 0.75, 1, 1.5, 2, 3, 4, 5].filter(v => v >= lo && v <= hi);
+  for (const v of levels) {
+    el("line", { x1: mL, x2: W - mR, y1: y(v), y2: y(v), stroke: v === 1 ? "#3a4558" : "#232c3b" }, svg);
+    const t = el("text", { x: mL - 6, y: y(v) + 4, fill: "#8b95a7", "font-size": 11, "text-anchor": "end" }, svg);
+    t.textContent = "$" + v;
+  }
+  // x labels: ~6 dates
+  const nlab = 6;
+  for (let k = 0; k < nlab; k++) {
+    const i = Math.round(k * (d.dates.length - 1) / (nlab - 1));
+    const t = el("text", { x: x(i), y: H - 8, fill: "#8b95a7", "font-size": 11, "text-anchor": "middle" }, svg);
+    t.textContent = d.dates[i].slice(0, 7);
+  }
+  for (const n of names) {
+    let path = "";
+    d.curves[n].forEach((v, i) => { path += (path ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1); });
+    el("path", { d: path, fill: "none", stroke: COLORS[n], "stroke-width": 1.8 }, svg);
+  }
+  document.getElementById("eqLegend").innerHTML = names
+    .map(n => `<span style="color:${COLORS[n]}">${NAMES[n]}</span>`).join("");
+  // metrics table
+  const m = DATA.metrics[curSplit];
+  const pct = v => v == null ? "–" : (v * 100).toFixed(1) + "%";
+  const num = v => v == null ? "–" : v.toFixed(2);
+  const cls = v => v >= 0 ? "pos" : "neg";
+  let html = `<table class="data"><tr><th style="text-align:left">strategy</th><th>CAGR</th><th>vol</th>
+    <th>Sharpe</th><th>Sortino</th><th>max DD</th><th>turnover/wk</th></tr>`;
+  for (const n of names) {
+    const r = m[n];
+    html += `<tr><td style="color:${COLORS[n]}">${NAMES[n]}</td>
+      <td class="${cls(r.cagr)}">${pct(r.cagr)}</td><td>${pct(r.vol)}</td>
+      <td class="${cls(r.sharpe)}">${num(r.sharpe)}</td><td>${num(r.sortino)}</td>
+      <td class="neg">${pct(r.max_drawdown)}</td><td>${pct(r.avg_turnover)}</td></tr>`;
+  }
+  document.getElementById("metricsTable").innerHTML = html + "</table>";
+}
+document.querySelectorAll("[data-split]").forEach(b => b.addEventListener("click", () => {
+  curSplit = b.dataset.split;
+  document.querySelectorAll("[data-split]").forEach(x => x.classList.toggle("active", x === b));
+  drawEquity();
+}));
+drawEquity();
+
+/* ---------- Fig 8: SPY 5-day return histogram ---------- */
+(function () {
+  const h = DATA.spy5d;
+  const W = 820, H = 260, mL = 40, mR = 14, mT = 12, mB = 32;
+  const svg = svgIn(document.getElementById("noiseHist"), W, H);
+  const maxC = Math.max(...h.counts);
+  const x = v => mL + (v + 0.12) / 0.24 * (W - mL - mR);
+  const y = c => mT + (1 - c / maxC) * (H - mT - mB);
+  h.counts.forEach((c, i) => {
+    if (!c) return;
+    el("rect", { x: x(h.edges[i]) + 0.5, y: y(c), width: x(h.edges[i + 1]) - x(h.edges[i]) - 1,
+                 height: y(0) - y(c), fill: "#5eb0ff", opacity: 0.65 }, svg);
+  });
+  for (const v of [-0.10, -0.05, 0, 0.05, 0.10]) {
+    const t = el("text", { x: x(v), y: H - 10, fill: "#8b95a7", "font-size": 11, "text-anchor": "middle" }, svg);
+    t.textContent = (v * 100) + "%";
+  }
+  el("line", { x1: x(h.mean), x2: x(h.mean), y1: mT, y2: y(0), stroke: "#4ade80", "stroke-width": 2 }, svg);
+  const mt = el("text", { x: x(h.mean) + 6, y: mT + 14, fill: "#4ade80", "font-size": 11.5 }, svg);
+  mt.textContent = "mean +" + (h.mean * 100).toFixed(2) + "%";
+  el("line", { x1: x(h.mean - h.std), x2: x(h.mean + h.std), y1: y(0) + 6, y2: y(0) + 6,
+               stroke: "#fbbf24", "stroke-width": 3, opacity: 0.9 }, svg);
+  const st = el("text", { x: x(h.mean + h.std) + 8, y: y(0) + 10, fill: "#fbbf24", "font-size": 11.5 }, svg);
+  st.textContent = "±1σ = " + (h.std * 100).toFixed(1) + "%";
+})();
+</script>
+</body>
+</html>

@@ -8,7 +8,13 @@ Reward design notes:
   prompt (same market day), so market direction cancels out and the model
   is trained on *relative* allocation quality.
 - Malformed output gets a flat penalty well below any achievable market
-  reward, so format compliance is learned quickly.
+  reward, so format compliance is learned quickly. The penalty must sit
+  below the WORST market outcome, not just below zero: with a -1 penalty,
+  "unparseable garbage" would have beaten "hold SPY" during the week of
+  2008-10-02 (reward -4.19) and earned a positive group advantage — i.e.
+  the model could learn to break formatting in bear regimes. -5 corresponds
+  to a -22% weekly portfolio loss, which a long-only unlevered ETF basket
+  essentially cannot reach.
 """
 
 from __future__ import annotations
@@ -19,7 +25,7 @@ import re
 
 from .data import CASH, UNIVERSE
 
-INVALID_REWARD = -1.0
+INVALID_REWARD = -5.0
 RETURN_SCALE = 20.0  # 5-day log returns are ~±3%; scale into a useful range
 
 _JSON_RE = re.compile(r"\{[^{}]*\}")
