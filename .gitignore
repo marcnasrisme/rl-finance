@@ -2,7 +2,6 @@
 __pycache__/
 *.pyc
 *.egg-info/
-data/prices.parquet
 outputs/
 .DS_Store
 .ipynb_checkpoints/
