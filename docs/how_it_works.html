@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How our project works — the complete walkthrough</title>
+<style>
+  :root {
+    --ink: #1a2233; --soft: #5b6b83; --bg: #fbfbf9; --card: #ffffff;
+    --line: #e3e5e8; --blue: #2563eb; --green: #15803d; --red: #b91c1c;
+    --gold: #b45309; --hl: #eff4ff;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 17px/1.7 Georgia, "Times New Roman", serif;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 0 24px 120px; }
+  header { padding: 64px 0 24px; border-bottom: 2px solid var(--ink); margin-bottom: 12px; }
+  h1 { font-size: 2rem; line-height: 1.25; margin: 0 0 10px; font-weight: 700; }
+  .sub { color: var(--soft); font-size: 1.02rem; }
+  h2 { font-size: 1.45rem; margin: 64px 0 8px; padding-top: 8px; }
+  h2 .n { color: var(--blue); margin-right: 8px; }
+  h3 { font-size: 1.08rem; margin: 30px 0 6px; }
+  p { margin: 12px 0; }
+  strong { color: #000; }
+  a { color: var(--blue); }
+  code {
+    font: 0.85em "SF Mono", Menlo, Consolas, monospace;
+    background: #f1f2f4; border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px;
+  }
+  pre {
+    background: #f7f8f9; border: 1px solid var(--line); border-radius: 8px;
+    padding: 14px 16px; overflow-x: auto; font-size: 0.83rem; line-height: 1.55;
+  }
+  pre code { background: none; border: none; padding: 0; }
+  .eq {
+    background: var(--hl); border: 1px solid #dbe6ff; border-radius: 8px;
+    padding: 14px 18px; margin: 16px 0; text-align: center; font-size: 1.1rem;
+    font-family: "STIX Two Math", "Cambria Math", Georgia, serif;
+  }
+  .eq .why { display: block; font: 0.8rem Georgia, serif; color: var(--soft);
+    font-style: italic; margin-top: 8px; }
+  sub, sup { font-size: 0.7em; }
+  .fig {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 16px; margin: 22px 0;
+  }
+  .fig .cap { color: var(--soft); font-size: 0.85rem; margin-top: 10px;
+    font-style: italic; line-height: 1.5; }
+  .fig svg { display: block; width: 100%; height: auto; }
+  .note {
+    border-left: 4px solid var(--blue); background: var(--hl);
+    padding: 10px 16px; margin: 18px 0; border-radius: 0 8px 8px 0;
+  }
+  .note.warn { border-color: var(--gold); background: #fdf6ec; }
+  table.t { width: 100%; border-collapse: collapse; font-size: 0.88rem; margin: 14px 0; }
+  table.t th { text-align: left; border-bottom: 2px solid var(--ink); padding: 6px 8px; }
+  table.t td { border-bottom: 1px solid var(--line); padding: 6px 8px; vertical-align: top; }
+  .mono { font-family: "SF Mono", Menlo, monospace; font-size: 0.85em; }
+  .toc { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 14px 22px; margin: 24px 0; font-size: 0.95rem; }
+  .toc a { display: block; padding: 2px 0; text-decoration: none; color: var(--ink); }
+  .toc a:hover { color: var(--blue); }
+  .toc .n { color: var(--blue); display: inline-block; width: 24px; }
+  .controls { display: flex; align-items: center; gap: 12px; font-size: 0.9rem;
+    color: var(--soft); margin: 8px 0; font-family: -apple-system, sans-serif; }
+  input[type="range"] { accent-color: var(--blue); flex: 1; }
+  .big { font-size: 1.3rem; color: var(--ink); font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>How our project works,<br>from raw prices to a trained trader</h1>
+  <p class="sub">The companion to <em>rl_trading_explained.html</em> (theory). This one is the
+  machine itself: what each piece does, in the order the data flows through it — including the
+  training log you're watching right now. All numbers are real numbers from our runs.</p>
+</header>
+
+<nav class="toc">
+  <a href="#s1"><span class="n">1</span> The whole machine on one page</a>
+  <a href="#s2"><span class="n">2</span> Data: 12 ETFs become 918 exam questions</a>
+  <a href="#s3"><span class="n">3</span> One market day becomes one prompt</a>
+  <a href="#s4"><span class="n">4</span> The model answers 8 times</a>
+  <a href="#s5"><span class="n">5</span> Parsing: from text to weights</a>
+  <a href="#s6"><span class="n">6</span> The reward, and the −5 rule</a>
+  <a href="#s7"><span class="n">7</span> The GRPO update, concretely</a>
+  <a href="#s8"><span class="n">8</span> Anatomy of the training run (your log, decoded)</a>
+  <a href="#s9"><span class="n">9</span> Do we reuse data? Epochs explained</a>
+  <a href="#s10"><span class="n">10</span> How we know if it actually works</a>
+  <a href="#s11"><span class="n">11</span> What runs where: Mac, GitHub, Colab, Drive</a>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="s1"><span class="n">1.</span>The whole machine on one page</h2>
+
+<div class="fig">
+<svg viewBox="0 0 780 330" xmlns="http://www.w3.org/2000/svg" font-family="Georgia,serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+  <g font-size="13" fill="#1a2233">
+    <rect x="10" y="20" width="150" height="62" rx="8" fill="#fff" stroke="#e3e5e8"/>
+    <text x="85" y="46" text-anchor="middle" font-weight="bold">Yahoo Finance</text>
+    <text x="85" y="66" text-anchor="middle" fill="#5b6b83" font-size="11">19 yrs of daily prices</text>
+
+    <rect x="215" y="20" width="150" height="62" rx="8" fill="#fff" stroke="#e3e5e8"/>
+    <text x="290" y="41" text-anchor="middle" font-weight="bold">data.py</text>
+    <text x="290" y="59" text-anchor="middle" fill="#5b6b83" font-size="11">features, no lookahead</text>
+    <text x="290" y="74" text-anchor="middle" fill="#5b6b83" font-size="11">splits: train/val/test</text>
+
+    <rect x="420" y="20" width="150" height="62" rx="8" fill="#fff" stroke="#e3e5e8"/>
+    <text x="495" y="41" text-anchor="middle" font-weight="bold">train.jsonl</text>
+    <text x="495" y="59" text-anchor="middle" fill="#5b6b83" font-size="11">591 days: prompt +</text>
+    <text x="495" y="74" text-anchor="middle" fill="#5b6b83" font-size="11">hidden answer key</text>
+
+    <rect x="625" y="20" width="145" height="62" rx="8" fill="#eff4ff" stroke="#2563eb"/>
+    <text x="697" y="41" text-anchor="middle" font-weight="bold" fill="#2563eb">Qwen3-4B</text>
+    <text x="697" y="59" text-anchor="middle" fill="#5b6b83" font-size="11">+ LoRA adapters</text>
+    <text x="697" y="74" text-anchor="middle" fill="#5b6b83" font-size="11">(the only part that learns)</text>
+
+    <line x1="160" y1="51" x2="211" y2="51" stroke="#2563eb" stroke-width="1.5" marker-end="url(#a)"/>
+    <line x1="365" y1="51" x2="416" y2="51" stroke="#2563eb" stroke-width="1.5" marker-end="url(#a)"/>
+    <line x1="570" y1="51" x2="621" y2="51" stroke="#2563eb" stroke-width="1.5" marker-end="url(#a)"/>
+
+    <!-- training loop -->
+    <rect x="105" y="150" width="570" height="120" rx="10" fill="#fff" stroke="#e3e5e8"/>
+    <text x="390" y="140" text-anchor="middle" fill="#5b6b83" font-size="12" font-style="italic">the loop, repeated 590 times on Colab's A100</text>
+
+    <rect x="125" y="175" width="115" height="70" rx="7" fill="#eff4ff" stroke="#dbe6ff"/>
+    <text x="182" y="200" text-anchor="middle" font-size="12">sample <tspan font-weight="bold">8</tspan></text>
+    <text x="182" y="218" text-anchor="middle" font-size="12">allocations</text>
+    <text x="182" y="235" text-anchor="middle" fill="#5b6b83" font-size="10.5">temp 1.0, per day</text>
+
+    <rect x="265" y="175" width="115" height="70" rx="7" fill="#eff4ff" stroke="#dbe6ff"/>
+    <text x="322" y="200" text-anchor="middle" font-size="12">parse JSON</text>
+    <text x="322" y="218" text-anchor="middle" font-size="12">→ weights</text>
+    <text x="322" y="235" text-anchor="middle" fill="#5b6b83" font-size="10.5">generous rules</text>
+
+    <rect x="405" y="175" width="115" height="70" rx="7" fill="#eff4ff" stroke="#dbe6ff"/>
+    <text x="462" y="200" text-anchor="middle" font-size="12">score vs real</text>
+    <text x="462" y="218" text-anchor="middle" font-size="12">next 5 days</text>
+    <text x="462" y="235" text-anchor="middle" fill="#5b6b83" font-size="10.5">20·log(1+R), or −5</text>
+
+    <rect x="545" y="175" width="115" height="70" rx="7" fill="#eff4ff" stroke="#dbe6ff"/>
+    <text x="602" y="200" text-anchor="middle" font-size="12">GRPO update</text>
+    <text x="602" y="218" text-anchor="middle" font-size="12">of the LoRA</text>
+    <text x="602" y="235" text-anchor="middle" fill="#5b6b83" font-size="10.5">beat your siblings</text>
+
+    <line x1="240" y1="210" x2="261" y2="210" stroke="#2563eb" stroke-width="1.5" marker-end="url(#a)"/>
+    <line x1="380" y1="210" x2="401" y2="210" stroke="#2563eb" stroke-width="1.5" marker-end="url(#a)"/>
+    <line x1="520" y1="210" x2="541" y2="210" stroke="#2563eb" stroke-width="1.5" marker-end="url(#a)"/>
+    <path d="M 697 86 L 697 210 L 664 210" fill="none" stroke="#2563eb" stroke-width="1.5"/>
+    <path d="M 602 245 L 602 292 L 697 292 L 697 274" fill="none" stroke="#15803d" stroke-width="1.5" marker-end="url(#a)"/>
+    <text x="640" y="308" text-anchor="middle" fill="#15803d" font-size="11.5" font-style="italic">weights nudged, loop repeats</text>
+
+    <!-- eval -->
+    <rect x="10" y="150" width="72" height="120" rx="8" fill="#f0faf2" stroke="#15803d"/>
+    <text x="46" y="185" text-anchor="middle" font-size="11.5" fill="#15803d" font-weight="bold">eval</text>
+    <text x="46" y="205" text-anchor="middle" font-size="10.5" fill="#5b6b83">val years</text>
+    <text x="46" y="220" text-anchor="middle" font-size="10.5" fill="#5b6b83">2020–22,</text>
+    <text x="46" y="235" text-anchor="middle" font-size="10.5" fill="#5b6b83">backtest vs</text>
+    <text x="46" y="250" text-anchor="middle" font-size="10.5" fill="#5b6b83">benchmarks</text>
+  </g>
+</svg>
+<div class="cap">The full system. Everything left of the model runs once on your Mac; the loop runs
+590 times on Colab; the eval box runs before training (zero-shot baseline) and after (verdict).</div>
+</div>
+
+<p>In one paragraph: we take 19 years of daily prices for 12 ETFs, turn each Monday-ish into a
+small "exam question" (a table of market statistics), have the model write 8 different portfolio
+answers per question, grade each answer by what the market <em>actually did</em> in the following
+week, and nudge the model's adapter weights toward the answers that beat their siblings. After
+~9,500 graded answers, we test the model on years it has never traded (2020–2022) against five
+classic strategies.</p>
+
+<!-- ============================================================ -->
+<h2 id="s2"><span class="n">2.</span>Data: 12 ETFs become 918 exam questions</h2>
+
+<p>The universe is 12 highly liquid ETFs covering the major asset classes — US/intl/EM equities
+(SPY, QQQ, IWM, EFA, EEM), Treasuries and credit (TLT, IEF, LQD, HYG), real assets (GLD, DBC,
+VNQ) — plus CASH, which always earns 0%. ETFs rather than stocks so nothing delists on us
+(survivorship bias), and asset-class allocation is where a weekly decision can plausibly matter.</p>
+
+<p>For every trading day and every asset, <code>data.py</code> computes six statistics, each using
+<strong>only information available at that day's close</strong>:</p>
+
+<div class="eq">
+r<sub>h</sub> = P<sub>t</sub> / P<sub>t−h</sub> − 1&nbsp;&nbsp;for h ∈ {1, 5, 21, 63 days}
+&nbsp;&nbsp;·&nbsp;&nbsp; vol = std(daily r, 21d) × √252 &nbsp;&nbsp;·&nbsp;&nbsp;
+dist<sub>52w</sub> = P<sub>t</sub> / max(P, 252d) − 1
+<span class="why">momentum at four horizons, recent annualized volatility, distance below the 52-week high —
+the three best-documented families of signals in the empirical finance literature</span>
+</div>
+
+<p>Then time is cut into three strict, chronological blocks. Never random — with autocorrelated
+markets, a random split would put Tuesday in training and Wednesday in test, leaking the future:</p>
+
+<div class="fig">
+<svg viewBox="0 0 780 92" xmlns="http://www.w3.org/2000/svg" font-family="Georgia,serif" font-size="12.5">
+  <rect x="8" y="28" width="478" height="38" rx="6" fill="#dbe6ff" stroke="#2563eb"/>
+  <rect x="492" y="28" width="118" height="38" rx="6" fill="#fdf0d9" stroke="#b45309"/>
+  <rect x="616" y="28" width="156" height="38" rx="6" fill="#dcf3e1" stroke="#15803d"/>
+  <text x="247" y="52" text-anchor="middle" font-weight="bold">TRAIN 2008–2019 · 591 days</text>
+  <text x="551" y="52" text-anchor="middle" font-weight="bold">VAL · 152</text>
+  <text x="694" y="52" text-anchor="middle" font-weight="bold">TEST · 175</text>
+  <text x="247" y="84" text-anchor="middle" fill="#5b6b83" font-size="11">the model learns here</text>
+  <text x="551" y="84" text-anchor="middle" fill="#5b6b83" font-size="11">we iterate here</text>
+  <text x="694" y="84" text-anchor="middle" fill="#5b6b83" font-size="11">opened once, at the end</text>
+  <text x="8" y="18" fill="#5b6b83" font-size="11">2008</text>
+  <text x="772" y="18" fill="#5b6b83" font-size="11" text-anchor="end">mid-2026</text>
+</svg>
+<div class="cap">918 weekly decision points in total. One "day" every 5 trading days — weekly
+decisions, matching the 5-day reward horizon.</div>
+</div>
+
+<p>Each decision day is stored as one line of JSON — and the crucial design point is what's in it:</p>
+
+<pre><code>{"date": "2010-04-08",
+ "prompt": "You are a systematic portfolio manager...",   ← the model SEES this
+ "fwd_returns": {"SPY": 0.0212, "IWM": 0.0372, ...}}      ← the model NEVER sees this</code></pre>
+
+<p>The <code>fwd_returns</code> — what each asset returned over the <em>following</em> 5 trading
+days — are the hidden answer key. They exist only so the grader can score the model's output
+after it has committed.</p>
+
+<!-- ============================================================ -->
+<h2 id="s3"><span class="n">3.</span>One market day becomes one prompt</h2>
+
+<p>The prompt is a fixed template: instructions (allocate long-only across these ETFs and CASH,
+think briefly, end with one JSON object) followed by the day's feature table:</p>
+
+<pre><code>Date: 2010-04-08 (month: April)
+
+Ticker Asset                    1d     1w     1m     3m    Vol  vs52wH
+SPY    US large-cap equity     0.3    1.5    4.2    4.9    7.1    -0.2
+QQQ    US tech equity          0.2    1.2    4.3    5.7    7.2    -0.0
+IWM    US small-cap equity    -0.1    3.0    4.5    9.9   13.3    -0.4
+...
+GLD    Gold                    0.1    3.4    2.7    1.0   16.4    -5.5
+
+Your allocation:</code></pre>
+
+<p>Why a digested table instead of raw price history? Two reasons. <strong>Cost:</strong> this is
+~450 tokens, and we generate 8 completions for it 9,500 times — prompt length multiplies
+everything. <strong>Competence:</strong> language models reason far better over a dozen labeled
+statistics than over a wall of floating-point numbers. The feature engineering a classical quant
+would do in a model, we do in the prompt.</p>
+
+<!-- ============================================================ -->
+<h2 id="s4"><span class="n">4.</span>The model answers 8 times</h2>
+
+<p>For each day, the model generates <strong>8 independent completions at temperature 1.0</strong>.
+High temperature is not sloppiness — it is the exploration mechanism. The 8 answers form a
+<em>group</em>, and (as §7 shows) the model learns purely from differences <em>within</em> the
+group. Eight identical answers carry zero information; eight diverse ones let this week's market
+render a verdict between styles. A typical group at this stage of training looks like:</p>
+
+<pre><code>g1  "Broad momentum, ride equities."   {"SPY":0.3,"QQQ":0.3,"IWM":0.2,"EEM":0.2}
+g2  "REITs and small caps lead."       {"VNQ":0.4,"IWM":0.3,"QQQ":0.3}
+g3  "Defensive tilt."                  {"SPY":0.25,"TLT":0.25,"GLD":0.25,"CASH":0.25}
+g4  "Uncertain, stay safe."            {"CASH":0.7,"IEF":0.3}
+...</code></pre>
+
+<p>At evaluation time we do the opposite: temperature 0.2, one answer per day. Training samples
+the policy's whole distribution to explore; deployment takes its most confident choice.</p>
+
+<!-- ============================================================ -->
+<h2 id="s5"><span class="n">5.</span>Parsing: from text to weights</h2>
+
+<div class="fig">
+<svg viewBox="0 0 780 120" xmlns="http://www.w3.org/2000/svg" font-family="Georgia,serif" font-size="12">
+  <g fill="#1a2233">
+    <rect x="8" y="35" width="128" height="52" rx="7" fill="#fff" stroke="#e3e5e8"/>
+    <text x="72" y="57" text-anchor="middle">take the <tspan font-weight="bold">last</tspan></text>
+    <text x="72" y="74" text-anchor="middle">{...} in the text</text>
+    <rect x="166" y="35" width="128" height="52" rx="7" fill="#fff" stroke="#e3e5e8"/>
+    <text x="230" y="57" text-anchor="middle">keep known tickers,</text>
+    <text x="230" y="74" text-anchor="middle">clip each to [0, 1]</text>
+    <rect x="324" y="35" width="128" height="52" rx="7" fill="#fff" stroke="#e3e5e8"/>
+    <text x="388" y="57" text-anchor="middle">sum &gt; 1?</text>
+    <text x="388" y="74" text-anchor="middle">rescale down</text>
+    <rect x="482" y="35" width="128" height="52" rx="7" fill="#fff" stroke="#e3e5e8"/>
+    <text x="546" y="57" text-anchor="middle">sum &lt; 1?</text>
+    <text x="546" y="74" text-anchor="middle">rest → CASH</text>
+    <rect x="640" y="35" width="132" height="52" rx="7" fill="#dcf3e1" stroke="#15803d"/>
+    <text x="706" y="57" text-anchor="middle" font-weight="bold">valid weights</text>
+    <text x="706" y="74" text-anchor="middle" fill="#5b6b83" font-size="11">Σw = 1, all ≥ 0</text>
+    <line x1="136" y1="61" x2="162" y2="61" stroke="#2563eb" stroke-width="1.5" marker-end="url(#a)"/>
+    <line x1="294" y1="61" x2="320" y2="61" stroke="#2563eb" stroke-width="1.5" marker-end="url(#a)"/>
+    <line x1="452" y1="61" x2="478" y2="61" stroke="#2563eb" stroke-width="1.5" marker-end="url(#a)"/>
+    <line x1="610" y1="61" x2="636" y2="61" stroke="#2563eb" stroke-width="1.5" marker-end="url(#a)"/>
+    <text x="390" y="112" text-anchor="middle" fill="#b91c1c" font-size="11.5" font-style="italic">no JSON at all, or nothing usable inside it → invalid → reward −5</text>
+  </g>
+</svg>
+<div class="cap">The parser (rewards.py). Deliberately forgiving — every recoverable output
+becomes a gradeable portfolio.</div>
+</div>
+
+<p>Why so generous? If we demanded perfect format from step one, an untrained model might fail
+constantly — and a group where <em>everyone</em> scores −5 has zero internal differences,
+hence zero gradient, hence no learning, ever. Generous parsing lets market feedback flow
+immediately. (In practice our 4B turned out to format perfectly from the start — the log's low
+reward-std across days told us there wasn't a single −5 in the first 55 steps.)</p>
+
+<!-- ============================================================ -->
+<h2 id="s6"><span class="n">6.</span>The reward, and the −5 rule</h2>
+
+<div class="eq">
+reward = 20 · ln(1 + R<sub>portfolio</sub>)&nbsp;&nbsp;&nbsp;where R<sub>portfolio</sub> = Σ<sub>i</sub> w<sub>i</sub> · R<sub>i, next 5 days</sub>
+<span class="why">or −5 if the output couldn't be parsed</span>
+</div>
+
+<p>Drag the slider — this is the exact function, and why the log matters:</p>
+
+<div class="fig">
+  <div class="controls">
+    <span>portfolio 5-day return:</span>
+    <input type="range" id="retSlider" min="-25" max="25" step="0.5" value="2.5">
+    <span class="big" id="retVal"></span>
+  </div>
+  <div id="rewardPlot"></div>
+  <div class="cap">The log makes losses hurt more than symmetric gains help: −20% scores −4.46
+  while +20% scores only +3.65. That asymmetry mirrors real compounding (a −50% needs +100% to
+  recover) and quietly teaches loss-aversion. The dashed line is the −5 invalid penalty — note
+  it sits <em>below</em> the curve at −22%, the worst weekly loss a long-only ETF basket can
+  realistically produce.</div>
+</div>
+
+<p>That last detail is a war story. Our first version used −1, reasoning "negative is bad
+enough." Then we computed a real group for October 2, 2008 — where holding SPY into the week
+scored −4.19 — and discovered that <strong>unparseable garbage (−1) would have out-scored the
+stock market</strong> and received a <em>positive</em> learning signal. A model trained that way
+could learn to sabotage its own formatting whenever the market smells like a crash. The penalty
+must sit below the worst <em>achievable</em> outcome, not below zero. Hence −5 ≈ a −22% week.</p>
+
+<!-- ============================================================ -->
+<h2 id="s7"><span class="n">7.</span>The GRPO update, concretely</h2>
+
+<p>Now the 8 graded answers become a gradient. Within each group:</p>
+
+<div class="eq">
+A<sub>i</sub> = ( r<sub>i</sub> − mean(r<sub>1..8</sub>) ) / std(r<sub>1..8</sub>)
+<span class="why">the advantage: how much better answer i did than its 7 siblings, in units of the group's spread</span>
+</div>
+
+<p>Subtracting the group mean is the masterstroke for markets: all 8 siblings faced the <em>same
+week</em>, so "the whole market rose 2%" is in every sibling's reward and vanishes in the
+subtraction. What survives is purely <em>which allocation was better</em>. A real example from
+training data — the week of Oct 2, 2008, when equities collapsed:</p>
+
+<table class="t">
+<tr><th>candidate answer</th><th>5-day return</th><th>raw reward</th><th>advantage</th></tr>
+<tr><td>All SPY</td><td>−18.9%</td><td>−4.19</td><td style="color:var(--red)">−1.51</td></tr>
+<tr><td>Equal weight</td><td>−11.1%</td><td>−2.35</td><td style="color:var(--red)">−0.46</td></tr>
+<tr><td>Risk-off (TLT/GLD/cash)</td><td>+2.8%</td><td>+0.55</td><td style="color:var(--green)">+1.20</td></tr>
+<tr><td>All CASH</td><td>0.0%</td><td>0.00</td><td style="color:var(--green)">+0.88</td></tr>
+</table>
+
+<p>Every reward is terrible or flat — yet the advantages point exactly the right way: the
+defensive answers get <em>positive</em> advantages in a crash. Without the group baseline, a bad
+week would punish every answer including the smart ones.</p>
+
+<p>Then the actual parameter update, in three sentences. Each completion is a sequence of tokens
+the model chose; each token had a probability. The loss multiplies every token's log-probability
+by its completion's advantage — so all the tokens that produced the risk-off answer (the
+reasoning words <em>and</em> the JSON numbers) get pushed up in probability, weighted +1.20,
+while all-SPY's tokens get pushed down, weighted −1.51. Gradients flow only into the LoRA
+adapters (≈0.5% of the model); a small KL penalty keeps the policy from drifting far from the
+base model's language competence.</p>
+
+<div class="note">One update is a whisper, not a lesson. No single week proves anything — the
+policy improves because ~9,500 whispers, each pointing slightly toward "what worked relative to
+siblings this week," accumulate into statistical pressure. Patterns that keep winning across
+hundreds of different weeks (defensiveness when vol spikes, participation when trends are broad)
+get reinforced; patterns that only won once wash out.</div>
+
+<!-- ============================================================ -->
+<h2 id="s8"><span class="n">8.</span>Anatomy of the training run — your log, decoded</h2>
+
+<p>The hierarchy that confused us both at first, drawn once and for all:</p>
+
+<div class="fig">
+<svg viewBox="0 0 780 210" xmlns="http://www.w3.org/2000/svg" font-family="Georgia,serif" font-size="12.5">
+  <g fill="#1a2233">
+    <rect x="8" y="14" width="764" height="182" rx="10" fill="#fff" stroke="#e3e5e8"/>
+    <text x="20" y="38" font-weight="bold">1 logged row</text>
+    <text x="140" y="38" fill="#5b6b83" font-size="11.5">= 5 optimizer steps = 80 completions = 10 market days (logging_steps=5)</text>
+    <rect x="20" y="52" width="740" height="130" rx="8" fill="#fbfbf9" stroke="#e3e5e8"/>
+    <text x="32" y="76" font-weight="bold">1 optimizer step</text>
+    <text x="172" y="76" fill="#5b6b83" font-size="11.5">= 16 completions = 2 market days (batch 8 × grad-accum 2)</text>
+    <rect x="32" y="90" width="716" height="78" rx="8" fill="#fff" stroke="#e3e5e8"/>
+    <text x="44" y="114" font-weight="bold">1 group</text>
+    <text x="118" y="114" fill="#5b6b83" font-size="11.5">= 8 completions, all answering the SAME market day (num_generations=8)</text>
+    <g font-size="10">
+      <rect x="44" y="126" width="80" height="30" rx="5" fill="#eff4ff" stroke="#dbe6ff"/>
+      <rect x="132" y="126" width="80" height="30" rx="5" fill="#eff4ff" stroke="#dbe6ff"/>
+      <rect x="220" y="126" width="80" height="30" rx="5" fill="#eff4ff" stroke="#dbe6ff"/>
+      <text x="84" y="145" text-anchor="middle" fill="#5b6b83">completion</text>
+      <text x="172" y="145" text-anchor="middle" fill="#5b6b83">completion</text>
+      <text x="260" y="145" text-anchor="middle" fill="#5b6b83">completion</text>
+      <text x="330" y="145" fill="#5b6b83">× 8 …</text>
+    </g>
+  </g>
+</svg>
+<div class="cap">Totals for our run: 1 epoch = 591 days ≈ 295 steps; 2 epochs = 590 steps
+= 9,456 scored portfolios. Each logged row averages only the window since the previous row —
+it is a fresh 10-day snapshot, not a running total.</div>
+</div>
+
+<p>Now the actual row you pasted from Colab, column by column:</p>
+
+<table class="t">
+<tr><th>column</th><th class="mono">value</th><th>meaning &amp; verdict</th></tr>
+<tr><td class="mono">reward</td><td class="mono">0.174</td><td>mean reward of the window's 80 completions. Invert the formula: 20·ln(1+R)=0.174 → R ≈ <strong>+0.87% average weekly return</strong>. Early on this mostly reflects <em>which weeks got sampled</em>, not skill. Watch the trend, never the level.</td></tr>
+<tr><td class="mono">reward_std</td><td class="mono">0.036</td><td>average <em>within-group</em> spread — the advantage denominator, i.e. <strong>the learning fuel</strong>. Low-ish here (siblings are similar); if it hits 0, learning stops.</td></tr>
+<tr><td class="mono">rewards/…/std</td><td class="mono">0.079</td><td>spread across all 80 completions (mixing different days). A single −5 would blow this past 1.0 → its small value proves <strong>zero invalid outputs</strong>.</td></tr>
+<tr><td class="mono">mean_length</td><td class="mono">49.6</td><td>tokens per answer: one terse sentence + JSON. Healthy.</td></tr>
+<tr><td class="mono">clipped_ratio</td><td class="mono">0.0</td><td>share of answers that hit the 256-token ceiling. Zero = no runaway rambling.</td></tr>
+<tr><td class="mono">kl</td><td class="mono">0.001</td><td>divergence from the frozen reference model. Near zero at step 5, will grow slowly. Exploding = policy going feral; flat forever = nothing being learned.</td></tr>
+<tr><td class="mono">Training Loss</td><td class="mono">−0.0059</td><td>the GRPO surrogate. <strong>Not</strong> a supervised loss — it is not supposed to decrease steadily. Ignore it; your dashboard is <code>reward</code> + <code>reward_std</code> + <code>kl</code>.</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="s9"><span class="n">9.</span>Do we reuse data? Epochs explained</h2>
+
+<p>Two kinds of "sample," two different answers:</p>
+
+<p><strong>Completions — never reused.</strong> Every step generates brand-new answers from the
+current policy, grades them, applies one gradient update, discards them. The model always learns
+from its own freshest behavior.</p>
+
+<p><strong>Market days — reused exactly once.</strong> Two epochs = each of the 591 days is
+visited twice. But the second visit is a <em>retake, not a replay</em>: the updated model writes
+8 fresh answers and gets freshly graded. Same exam question, new answers.</p>
+
+<div class="note warn">Why only 2 epochs: each extra pass re-mines the same 591 historical weeks.
+At some point the policy stops learning "how to allocate" and starts fitting <em>those specific
+weeks' outcomes</em> ("states that look like March 2009 → all-in QQQ") — overfitting, RL flavor.
+Our defense in depth: few epochs, a rank-32 LoRA that physically lacks memorization capacity,
+and the held-out years as the only scoreboard that counts.</div>
+
+<!-- ============================================================ -->
+<h2 id="s10"><span class="n">10.</span>How we know if it actually works</h2>
+
+<p>Three tiers of evidence, in increasing order of trustworthiness:</p>
+
+<table class="t">
+<tr><th>tier</th><th>comparison</th><th>what it can tell you</th></tr>
+<tr><td><strong>1. Epoch vs epoch</strong></td><td>mean reward over epoch 2 vs epoch 1 — same 591 days, updated policy</td><td>the policy improved <em>on training years</em>. Could still be memorization.</td></tr>
+<tr><td><strong>2. Trained vs zero-shot</strong></td><td>backtest on <strong>2020–2022</strong> (never trained on): the GRPO model vs the same model before any RL</td><td>what the RL itself bought, beyond the base model's pretrained instincts. <em>The</em> headline comparison.</td></tr>
+<tr><td><strong>3. Vs the classics</strong></td><td>same backtest vs SPY, equal-weight, 60/40, momentum, inverse-vol — all through the identical simulator (weekly rebalance, weight drift, 10 bps costs)</td><td>whether the whole exercise beats a one-line strategy, risk-adjusted (Sharpe, max drawdown).</td></tr>
+</table>
+
+<p>And one honesty clause on top: three years of validation is ~36 monthly observations, so a
+measured Sharpe carries an error bar of roughly ±0.6. A small win on val is a hint, not a proof.
+That's why the test years (2023–2026) stay untouched until everything is frozen — they get
+opened once, and that number is the number. Bonus: since checkpoints land on Drive every 50
+steps, we can afterwards backtest <em>each</em> checkpoint on val and plot performance vs
+training time — the classic curve that shows exactly where learning turns into overfitting.</p>
+
+<!-- ============================================================ -->
+<h2 id="s11"><span class="n">11.</span>What runs where</h2>
+
+<div class="fig">
+<svg viewBox="0 0 780 180" xmlns="http://www.w3.org/2000/svg" font-family="Georgia,serif" font-size="12.5">
+  <g fill="#1a2233">
+    <rect x="8" y="30" width="170" height="120" rx="10" fill="#fff" stroke="#e3e5e8"/>
+    <text x="93" y="54" text-anchor="middle" font-weight="bold">Your Mac</text>
+    <text x="93" y="76" text-anchor="middle" fill="#5b6b83" font-size="11">code + data pipeline</text>
+    <text x="93" y="92" text-anchor="middle" fill="#5b6b83" font-size="11">backtests, benchmarks</text>
+    <text x="93" y="108" text-anchor="middle" fill="#5b6b83" font-size="11">these two documents</text>
+    <text x="93" y="130" text-anchor="middle" fill="#b45309" font-size="11" font-style="italic">must stay awake during runs</text>
+
+    <rect x="218" y="30" width="150" height="120" rx="10" fill="#fff" stroke="#e3e5e8"/>
+    <text x="293" y="54" text-anchor="middle" font-weight="bold">GitHub</text>
+    <text x="293" y="76" text-anchor="middle" fill="#5b6b83" font-size="11">marcnasrisme/rl-finance</text>
+    <text x="293" y="92" text-anchor="middle" fill="#5b6b83" font-size="11">code + frozen data,</text>
+    <text x="293" y="108" text-anchor="middle" fill="#5b6b83" font-size="11">Colab clones from here</text>
+
+    <rect x="408" y="30" width="170" height="120" rx="10" fill="#eff4ff" stroke="#2563eb"/>
+    <text x="493" y="54" text-anchor="middle" font-weight="bold" fill="#2563eb">Colab VM (A100)</text>
+    <text x="493" y="76" text-anchor="middle" fill="#5b6b83" font-size="11">the 590-step loop</text>
+    <text x="493" y="92" text-anchor="middle" fill="#5b6b83" font-size="11">~6.77 units/hour</text>
+    <text x="493" y="108" text-anchor="middle" fill="#5b6b83" font-size="11">EPHEMERAL — dies when</text>
+    <text x="493" y="122" text-anchor="middle" fill="#5b6b83" font-size="11">deleted or disconnected</text>
+
+    <rect x="618" y="30" width="154" height="120" rx="10" fill="#dcf3e1" stroke="#15803d"/>
+    <text x="695" y="54" text-anchor="middle" font-weight="bold" fill="#15803d">Google Drive</text>
+    <text x="695" y="76" text-anchor="middle" fill="#5b6b83" font-size="11">checkpoints every 50 steps</text>
+    <text x="695" y="92" text-anchor="middle" fill="#5b6b83" font-size="11">final LoRA adapter</text>
+    <text x="695" y="108" text-anchor="middle" fill="#5b6b83" font-size="11">SURVIVES everything</text>
+
+    <line x1="178" y1="90" x2="214" y2="90" stroke="#2563eb" stroke-width="1.5" marker-end="url(#a)"/>
+    <line x1="368" y1="90" x2="404" y2="90" stroke="#2563eb" stroke-width="1.5" marker-end="url(#a)"/>
+    <line x1="578" y1="90" x2="614" y2="90" stroke="#15803d" stroke-width="1.5" marker-end="url(#a)"/>
+    <text x="196" y="80" text-anchor="middle" fill="#5b6b83" font-size="10">push</text>
+    <text x="386" y="80" text-anchor="middle" fill="#5b6b83" font-size="10">clone</text>
+    <text x="596" y="80" text-anchor="middle" fill="#5b6b83" font-size="10">save</text>
+  </g>
+</svg>
+<div class="cap">The golden rules: keep the Mac awake and the tab open while training (Colab Pro
+has no background execution) — and delete the runtime when done, because an idle A100 bills the
+same ~6.77 units/hour as a working one.</div>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--line);margin:56px 0 16px">
+<p style="color:var(--soft);font-size:0.85rem">Companion to <em>rl_trading_explained.html</em>
+(the theory: REINFORCE → PPO → DPO → GRPO and every design decision). Repo:
+github.com/marcnasrisme/rl-finance · written July 2, 2026, during the first Phase-1 training run.</p>
+
+</div>
+
+<script>
+// Interactive reward curve: reward = 20*ln(1+R), with the -5 invalid line.
+const NS = "http://www.w3.org/2000/svg";
+function el(t, a, p) { const e = document.createElementNS(NS, t);
+  for (const k in a) e.setAttribute(k, a[k]); if (p) p.appendChild(e); return e; }
+
+const W = 720, H = 300, mL = 46, mR = 16, mT = 12, mB = 34;
+const X = r => mL + (r + 0.25) / 0.5 * (W - mL - mR);        // R in [-25%, +25%]
+const Y = v => mT + (4 - v) / 10 * (H - mT - mB);            // reward in [-6, 4]
+const f = r => 20 * Math.log(1 + r);
+
+function draw() {
+  const R = parseFloat(document.getElementById("retSlider").value) / 100;
+  document.getElementById("retVal").textContent =
+    (R >= 0 ? "+" : "") + (R * 100).toFixed(1) + "%  →  reward " + f(R).toFixed(2);
+
+  const c = document.getElementById("rewardPlot");
+  c.innerHTML = "";
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, width: "100%" }, c);
+
+  for (const g of [-6, -4, -2, 0, 2, 4]) {
+    el("line", { x1: mL, x2: W - mR, y1: Y(g), y2: Y(g),
+                 stroke: g === 0 ? "#c9cdd3" : "#eceef0" }, svg);
+    const t = el("text", { x: mL - 6, y: Y(g) + 4, fill: "#5b6b83", "font-size": 11,
+                           "text-anchor": "end" }, svg);
+    t.textContent = g;
+  }
+  for (const rv of [-0.2, -0.1, 0, 0.1, 0.2]) {
+    const t = el("text", { x: X(rv), y: H - 12, fill: "#5b6b83", "font-size": 11,
+                           "text-anchor": "middle" }, svg);
+    t.textContent = (rv * 100) + "%";
+  }
+  // -5 invalid penalty line
+  el("line", { x1: mL, x2: W - mR, y1: Y(-5), y2: Y(-5), stroke: "#b91c1c",
+               "stroke-dasharray": "5 4", "stroke-width": 1.5 }, svg);
+  const pl = el("text", { x: W - mR - 4, y: Y(-5) - 6, fill: "#b91c1c", "font-size": 11,
+                          "text-anchor": "end" }, svg);
+  pl.textContent = "invalid output = −5  (≈ a −22% week)";
+  // the curve
+  let d = "";
+  for (let r = -0.25; r <= 0.2501; r += 0.005)
+    d += (d ? "L" : "M") + X(r).toFixed(1) + " " + Y(f(r)).toFixed(1);
+  el("path", { d, fill: "none", stroke: "#2563eb", "stroke-width": 2.5 }, svg);
+  // symmetric-gain ghost for comparison: 20*R (linear)
+  let d2 = "";
+  for (let r = -0.25; r <= 0.2501; r += 0.01)
+    d2 += (d2 ? "L" : "M") + X(r).toFixed(1) + " " + Y(20 * r).toFixed(1);
+  el("path", { d: d2, fill: "none", stroke: "#9aa4b2", "stroke-width": 1,
+               "stroke-dasharray": "3 4" }, svg);
+  const gl = el("text", { x: X(0.21), y: Y(20 * 0.235), fill: "#9aa4b2", "font-size": 10.5 }, svg);
+  gl.textContent = "linear (for contrast)";
+  // marker dot
+  el("circle", { cx: X(R), cy: Y(f(R)), r: 6, fill: "#2563eb" }, svg);
+  el("line", { x1: X(R), x2: X(R), y1: Y(f(R)) + 6, y2: H - mB + 2, stroke: "#2563eb",
+               opacity: 0.35 }, svg);
+}
+document.getElementById("retSlider").addEventListener("input", draw);
+draw();
+</script>
+</body>
+</html>
