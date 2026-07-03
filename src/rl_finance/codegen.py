@@ -64,8 +64,9 @@ falling rates) — your logic must be robust across regimes, not tuned to
 one. High turnover is penalized through costs.
 
 Rules:
-- Only `np` (numpy), `pd` (pandas) and `math` are available. No imports,
-  no file or network access.
+- Only numpy, pandas and math are available (already provided as `np`,
+  `pd`, `math`; importing them is also fine). Any other import fails.
+  No file or network access.
 - Keep it fast: well under 2 seconds per call.
 - If your code raises an exception, times out, returns malformed weights,
   or violates long-only, the episode scores the minimum reward.

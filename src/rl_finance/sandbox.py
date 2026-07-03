@@ -93,6 +93,28 @@ class _SafeModule:
 SAFE_NP = _SafeModule(np)
 SAFE_PD = _SafeModule(pd)
 
+# Coder models reflexively write `import numpy as np` even when told the
+# modules are pre-provided. Failing those imports would -5 nearly every
+# completion and flatten the learning signal, so imports of exactly these
+# three names are allowed — they alias the same safe proxies. Everything
+# else still raises.
+_IMPORTABLE = {"numpy": SAFE_NP, "pandas": SAFE_PD, "math": math}
+
+
+def _safe_import(name, globals=None, locals=None, fromlist=(), level=0):
+    if level != 0:
+        raise StrategyError("relative imports are not allowed")
+    top = name.split(".")[0]
+    if top not in _IMPORTABLE:
+        raise StrategyError(f"import of {name!r} is not allowed")
+    mod = _IMPORTABLE[top]
+    for part in name.split(".")[1:]:
+        mod = getattr(mod, part)  # validates the dotted path (may raise)
+    return mod if fromlist else _IMPORTABLE[top]
+
+
+SAFE_BUILTINS["__import__"] = _safe_import
+
 
 @contextmanager
 def time_limit(seconds: float):

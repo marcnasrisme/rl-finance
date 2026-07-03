@@ -235,6 +235,24 @@ def test_minimax_windows_are_era_separated_and_score_is_min(prices):
     assert out[0] == pytest.approx(min(fn_scores))
 
 
+def test_benign_imports_are_allowed(prices):
+    code = '''```python
+import numpy as np
+import pandas as pd
+from math import sqrt
+
+def allocate(prices):
+    n = len(prices.columns)
+    assert sqrt(4) == 2.0
+    vol = prices.pct_change().dropna().tail(21).std() * np.sqrt(252)
+    return {t: 1.0 / n for t in prices.columns}
+```'''
+    fn = compile_strategy(code)
+    lo, _ = train_bounds(prices)
+    weekly = run_strategy(fn, prices, lo, lo + 30)
+    assert len(weekly) > 0
+
+
 def test_file_io_is_blocked_in_np_and_pd():
     for code in (
         '```python\ndef allocate(prices):\n    pd.read_parquet("data/prices.parquet")\n    return {}\n```',
