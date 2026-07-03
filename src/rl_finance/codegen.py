@@ -16,6 +16,8 @@ Design notes (motivated by Phase 1's findings, see README):
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 
@@ -123,7 +125,11 @@ def run_strategy(
     weekly_returns = []
     prev = {t: 0.0 for t in UNIVERSE}
 
-    with time_limit(timeout):
+    # Model-written pandas code emits torrents of FutureWarning /
+    # SettingWithCopyWarning (one per <strategy> exec x 150 calls); they're
+    # noise to us and real I/O overhead in notebooks — silence them here.
+    with warnings.catch_warnings(), time_limit(timeout):
+        warnings.simplefilter("ignore")
         for t in range(start, end - rebalance_every, rebalance_every):
             try:
                 raw = fn(p.iloc[: t + 1])
