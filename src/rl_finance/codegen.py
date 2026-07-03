@@ -171,27 +171,57 @@ def score_strategy(fn, prices: pd.DataFrame, start: int, end: int) -> float:
 
 # --- TRL glue ----------------------------------------------------------------------
 
-def make_dataset_rows(prices: pd.DataFrame, n_episodes: int, seed: int) -> list[dict]:
-    """Rows for GRPOTrainer: identical prompt, per-row hidden window."""
-    return [
-        {"prompt": [{"role": "user", "content": PROMPT}], "window": list(w)}
-        for w in make_windows(prices, n_episodes, seed)
-    ]
+MIN_ERA_GAP = 504  # when an episode has 2+ windows, force starts >= 2y apart
+
+
+def make_dataset_rows(
+    prices: pd.DataFrame,
+    n_episodes: int,
+    seed: int,
+    windows_per_episode: int = 1,
+) -> list[dict]:
+    """Rows for GRPOTrainer: identical prompt, per-row hidden window set.
+
+    windows_per_episode > 1 enables minimax scoring (see make_code_reward):
+    the episode's reward is the WORST window's Sharpe, and the windows are
+    forced to come from different eras — punishing era-memorization harder
+    than averaging does.
+    """
+    rng = np.random.default_rng(seed)
+    lo, hi = train_bounds(prices)
+    last_start = hi - WINDOW_DAYS
+    rows = []
+    for _ in range(n_episodes):
+        starts: list[int] = []
+        while len(starts) < windows_per_episode:
+            s = int(rng.integers(lo, last_start))
+            if all(abs(s - t) >= MIN_ERA_GAP for t in starts):
+                starts.append(s)
+        rows.append({
+            "prompt": [{"role": "user", "content": PROMPT}],
+            "window": [[s, s + WINDOW_DAYS] for s in starts],
+        })
+    return rows
 
 
 def make_code_reward(prices: pd.DataFrame):
     """Reward function (closure over prices) for TRL's GRPOTrainer.
 
-    `window` arrives per-completion via the extra dataset column.
+    `window` (a list of [start, end] pairs) arrives per-completion via the
+    extra dataset column. With one window the reward is that window's
+    clipped Sharpe; with several it is the minimum across them (minimax:
+    to score well you must be robust in EVERY era you were dealt).
     """
 
     def code_reward(completions, window, **kwargs) -> list[float]:
         rewards = []
-        for comp, win in zip(completions, window):
+        for comp, wins in zip(completions, window):
             text = comp[-1]["content"] if isinstance(comp, list) else comp
             try:
                 fn = compile_strategy(text)
-                rewards.append(score_strategy(fn, prices, win[0], win[1]))
+                rewards.append(
+                    min(score_strategy(fn, prices, s, e) for s, e in wins)
+                )
             except StrategyError:
                 rewards.append(INVALID_REWARD)
         return rewards

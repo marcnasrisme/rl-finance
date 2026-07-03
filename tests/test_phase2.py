@@ -167,7 +167,7 @@ def test_all_cash_scores_zero(prices):
 
 def test_crash_and_timeout_and_leverage_get_invalid_reward(prices):
     reward = make_code_reward(prices)
-    win = list(make_windows(prices, 1, seed=1)[0])
+    win = [list(make_windows(prices, 1, seed=1)[0])]
     comps = [CRASHES, LEVERAGED, SHORTS, NO_CODE]
     out = reward(comps, [win] * len(comps))
     assert out == [INVALID_REWARD] * len(comps)
@@ -206,11 +206,40 @@ def test_dataset_rows_shape(prices):
     assert len(rows) == 5
     assert rows[0]["prompt"][0]["role"] == "user"
     assert "def allocate" in rows[0]["prompt"][0]["content"]
-    assert len(rows[0]["window"]) == 2
+    assert len(rows[0]["window"]) == 1        # one window by default
+    assert len(rows[0]["window"][0]) == 2     # [start, end]
 
 
 def test_chat_format_completions_work(prices):
     reward = make_code_reward(prices)
-    win = list(make_windows(prices, 1, seed=5)[0])
+    win = [list(make_windows(prices, 1, seed=5)[0])]
     out = reward([[{"role": "assistant", "content": EQUAL_WEIGHT}]], [win])
     assert REWARD_CLIP[0] <= out[0] <= REWARD_CLIP[1]
+
+
+def test_minimax_windows_are_era_separated_and_score_is_min(prices):
+    from rl_finance.codegen import MIN_ERA_GAP
+
+    rows = make_dataset_rows(prices, 8, seed=6, windows_per_episode=2)
+    for r in rows:
+        (s1, _), (s2, _) = r["window"]
+        assert abs(s1 - s2) >= MIN_ERA_GAP
+
+    reward = make_code_reward(prices)
+    wins = rows[0]["window"]
+    fn_scores = [
+        score_strategy(compile_strategy(EQUAL_WEIGHT), prices, s, e)
+        for s, e in wins
+    ]
+    out = reward([EQUAL_WEIGHT], [wins])
+    assert out[0] == pytest.approx(min(fn_scores))
+
+
+def test_file_io_is_blocked_in_np_and_pd():
+    for code in (
+        '```python\ndef allocate(prices):\n    pd.read_parquet("data/prices.parquet")\n    return {}\n```',
+        '```python\ndef allocate(prices):\n    np.load("x.npy")\n    return {}\n```',
+    ):
+        fn = compile_strategy(code)
+        with pytest.raises(StrategyError):
+            fn(pd.DataFrame({"SPY": [1.0] * 300}))

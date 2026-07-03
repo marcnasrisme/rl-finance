@@ -64,6 +64,36 @@ SAFE_BUILTINS = {name: getattr(_builtins, name) for name in _ALLOWED_BUILTINS}
 SAFE_BUILTINS["print"] = lambda *a, **k: None  # silence, don't crash
 
 
+class _SafeModule:
+    """Shallow module proxy that blocks I/O entry points.
+
+    Closes the lookahead side-door: without this, generated code could call
+    pd.read_parquet(...) on the price snapshot sitting on disk and read the
+    future. Shallow only — instance methods (df.to_csv) are not intercepted;
+    acceptable under our threat model (writing leaks nothing about the future).
+    """
+
+    _BLOCKED = ("read_", "load", "save", "fromfile", "loadtxt", "genfromtxt",
+                "savetxt", "memmap", "to_pickle", "io", "eval", "lib")
+
+    def __init__(self, module):
+        object.__setattr__(self, "_module", module)
+
+    def __getattr__(self, name):
+        if name.startswith("_") or any(
+            name == b or name.startswith(b) for b in self._BLOCKED
+        ):
+            raise StrategyError(f"{self._module.__name__}.{name} is not available")
+        return getattr(self._module, name)
+
+    def __setattr__(self, name, value):
+        raise StrategyError("modules are read-only in the sandbox")
+
+
+SAFE_NP = _SafeModule(np)
+SAFE_PD = _SafeModule(pd)
+
+
 @contextmanager
 def time_limit(seconds: float):
     """Raise StrategyTimeout if the block runs longer than `seconds` (Unix only)."""
@@ -89,7 +119,8 @@ def compile_strategy(completion_text: str, timeout: float = 5.0):
     if code is None:
         raise StrategyError("no code block / no `def allocate` found")
 
-    namespace = {"__builtins__": SAFE_BUILTINS, "np": np, "pd": pd, "math": math}
+    namespace = {"__builtins__": SAFE_BUILTINS, "np": SAFE_NP, "pd": SAFE_PD,
+                 "math": math}
     try:
         with time_limit(timeout):
             exec(compile(code, "<strategy>", "exec"), namespace)
